@@ -3,7 +3,8 @@ cat > /root/proxy-farm3/install.sh << 'INSTALLEOF'
 set -e
 
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          ProxyFarm Neo - IPv6 Proxy Server v3.0         ║"
+echo "║          ProxyFarm Neo - IPv6 Proxy Server v4.0         ║"
+echo "║          Каждый прокси со своим логином/паролем         ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
 # Конфигурация
@@ -13,8 +14,6 @@ IPV6_SUBNET="2a01:540:44c4:df00::/64"
 IPV6_MAIN="2a01:540:44c4:df00:20c:29ff:fe84:71d1"
 INTERFACE="ens33"
 ADMIN_PASS="Maxim1809"
-PROXY_USER="1111"
-PROXY_PASS="1111"
 
 # Установка пакетов
 echo "[1/10] Установка пакетов..."
@@ -47,7 +46,7 @@ pip install flask flask-login werkzeug psutil > /dev/null 2>&1
 echo "[5/10] Создание приложения..."
 cat > /opt/proxy-farm/app.py << 'PYEOF'
 #!/usr/bin/env python3
-import sys, os, json, subprocess, time, socket, ipaddress, random, platform, re
+import sys, os, json, subprocess, time, socket, ipaddress, random, platform, re, string
 from datetime import datetime
 
 sys.path.insert(0, '/opt/proxy-farm/venv/lib/python3/dist-packages')
@@ -74,8 +73,6 @@ LOCAL_IPV4 = "192.168.1.7"
 IPV6_SUBNET = "2a01:540:44c4:df00::/64"
 IPV6_MAIN = "2a01:540:44c4:df00:20c:29ff:fe84:71d1"
 INTERFACE = "ens33"
-PROXY_USER = "1111"
-PROXY_PASS = "1111"
 ADMIN_HASH = generate_password_hash("Maxim1809")
 
 PROXY_DB = '/opt/proxy-farm/proxies.json'
@@ -115,10 +112,19 @@ def generate_random_ipv6():
 
 def add_ipv6(ipv6):
     try:
-        subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE],
-                     capture_output=True, check=False)
-        return True
-    except: return False
+        result = subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'show', 'dev', INTERFACE],
+                              capture_output=True, text=True)
+        if ipv6 in result.stdout:
+            return True
+        for attempt in range(3):
+            r = subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE],
+                             capture_output=True, text=True)
+            if r.returncode == 0:
+                return True
+            time.sleep(0.5)
+        return False
+    except:
+        return False
 
 def remove_ipv6(ipv6):
     try:
@@ -147,16 +153,29 @@ setgid 65535
 setuid 65535
 
 auth strong
-users 1111:CL:1111
-
-allow *
 """
+        # Добавляем всех уникальных пользователей
+        users_added = set()
+        for p in proxies:
+            if p.get('active', True):
+                user_pass = f"{p['username']}:{p['password']}"
+                if user_pass not in users_added:
+                    config += f"users {p['username']}:CL:{p['password']}\n"
+                    users_added.add(user_pass)
+        
+        config += "\nallow *\n"
         for p in proxies:
             if p.get('active', True):
                 config += f"proxy -6 -n -a -p{p['port']} -i{LOCAL_IPV4} -e{p['ipv6']}\n"
         config += "flush\n"
+        
         with open('/etc/3proxy/3proxy.cfg', 'w') as f: f.write(config)
-        with open('/etc/3proxy/.proxyauth', 'w') as f: f.write("1111:CL:1111\n")
+        
+        auth = ""
+        for p in proxies:
+            if p.get('active', True):
+                auth += f"{p['username']}:CL:{p['password']}\n"
+        with open('/etc/3proxy/.proxyauth', 'w') as f: f.write(auth)
         return True
     except: return False
 
@@ -333,8 +352,8 @@ def api_create():
     try:
         data = request.json
         count = int(data.get('count', 1))
-        username = data.get('username') or PROXY_USER
-        password = data.get('password') or PROXY_PASS
+        username = data.get('username') or ''
+        password = data.get('password') or ''
         
         proxies = load_proxies()
         used_ports = set(p['port'] for p in proxies)
@@ -346,18 +365,22 @@ def api_create():
         created = []
         for i in range(count):
             ipv6 = generate_random_ipv6()
-            add_ipv6(ipv6)
+            if not add_ipv6(ipv6):
+                continue
+            
             port = available_ports[i]
+            login = username or f"user_{random.randint(10000, 99999)}"
+            passwd = password or ''.join(random.choices(string.ascii_letters + string.digits, k=12))
             
             proxy = {
                 'id': f"p{port}",
                 'ipv6': ipv6,
                 'port': port,
-                'username': username,
-                'password': password,
+                'username': login,
+                'password': passwd,
                 'created_at': datetime.now().isoformat(),
                 'active': True,
-                'connection_format': f"{EXTERNAL_IPV4}:{port}:{username}:{password}"
+                'connection_format': f"{EXTERNAL_IPV4}:{port}:{login}:{passwd}"
             }
             proxies.append(proxy)
             created.append(proxy)
@@ -366,7 +389,7 @@ def api_create():
         update_3proxy_config()
         restart_3proxy()
         
-        return jsonify({'message': f'Создано {count} прокси', 'proxies': created})
+        return jsonify({'message': f'Создано {len(created)} прокси', 'proxies': created})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -479,7 +502,6 @@ PYEOF
 
 # HTML шаблоны
 echo "[6/10] Создание веб-интерфейса..."
-
 cat > /opt/proxy-farm/templates/login.html << 'HTMLEOF'
 <!DOCTYPE html>
 <html lang="ru">
@@ -499,8 +521,7 @@ cat > /opt/proxy-farm/templates/login.html << 'HTMLEOF'
     </style>
 </head>
 <body>
-    <div class="login-box">
-        <h1>⚡ ProxyFarm Neo</h1>
+    <div class="login-box"><h1>⚡ ProxyFarm Neo</h1>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         <form method="POST">
             <input type="text" name="username" placeholder="Логин" required>
@@ -616,8 +637,8 @@ cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
             <div class="card">
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px">
                     <div><label class="form-label">Количество</label><input type="number" class="form-input" id="count" value="1" min="1" max="100"></div>
-                    <div><label class="form-label">Логин</label><input type="text" class="form-input" id="username" placeholder="1111"></div>
-                    <div><label class="form-label">Пароль</label><input type="text" class="form-input" id="password" placeholder="1111"></div>
+                    <div><label class="form-label">Логин (пусто=авто)</label><input type="text" class="form-input" id="username" placeholder="Авто"></div>
+                    <div><label class="form-label">Пароль (пусто=авто)</label><input type="text" class="form-input" id="password" placeholder="Авто"></div>
                 </div>
                 <button class="btn" onclick="createProxies()" style="width:100%;margin-top:15px;padding:14px;font-size:16px">✨ Создать прокси</button>
             </div>
@@ -652,7 +673,7 @@ cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
         function toast(m,t){t=t||'success';var d=document.createElement('div');d.className='toast '+t;d.textContent=m;document.getElementById('toasts').appendChild(d);setTimeout(function(){d.remove()},3000)}
         function copyText(t){var i=document.createElement('textarea');i.value=t;i.style.position='fixed';i.style.opacity='0';document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);toast('Скопировано!')}
         function loadDashboard(){api('/api/system-info','GET',null,function(d){document.getElementById('dashStats').innerHTML='<div class="stat-card"><div class="stat-icon">🌐</div><div class="stat-value">'+(d.proxy_stats?d.proxy_stats.active:0)+'</div><div class="stat-label">Активных</div></div><div class="stat-card"><div class="stat-icon">🔌</div><div class="stat-value">'+(d.proxy_stats?d.proxy_stats.ports_available:0)+'</div><div class="stat-label">Портов</div></div><div class="stat-card"><div class="stat-icon">🖥️</div><div class="stat-value">'+(d.cpu?d.cpu.percent:0)+'%</div><div class="stat-label">CPU</div></div><div class="stat-card"><div class="stat-icon">💾</div><div class="stat-value">'+(d.memory?d.memory.percent:0)+'%</div><div class="stat-label">RAM</div></div>';document.getElementById('cpuBar').style.width=(d.cpu?d.cpu.percent:0)+'%';document.getElementById('cpuValue').textContent=(d.cpu?d.cpu.percent:0)+'%';document.getElementById('ramBar').style.width=(d.memory?d.memory.percent:0)+'%';document.getElementById('ramValue').textContent=(d.memory?d.memory.percent:0)+'%';document.getElementById('proxyStatsDash').innerHTML='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center"><div><div style="font-size:24px;color:#00c853">'+(d.proxy_stats?d.proxy_stats.active:0)+'</div><div style="font-size:11px;color:var(--text2)">Активные</div></div><div><div style="font-size:24px;color:#ffa726">'+(d.proxy_stats?d.proxy_stats.total:0)+'</div><div style="font-size:11px;color:var(--text2)">Всего</div></div><div><div style="font-size:24px;color:#448aff">'+(d.proxy_stats?d.proxy_stats.ports_available:0)+'</div><div style="font-size:11px;color:var(--text2)">Свободно</div></div></div>'})}
-        function loadProxies(){api('/api/proxies','GET',null,function(d){var l=document.getElementById('proxyList');if(!d.proxies||d.proxies.length===0){l.innerHTML='<div style="text-align:center;padding:40px;color:#666"><h3>Нет прокси</h3></div>';return}var h='';for(var i=0;i<d.proxies.length;i++){var p=d.proxies[i];var s=selectedProxies.indexOf(p.id)>=0?' selected':'';var sc=p.port_open?'var(--green)':'var(--red)';var st=p.port_open?'Открыт':'Закрыт';h+='<div class="proxy-card'+s+'" onclick="selectProxy(\''+p.id+'\')"><div style="position:absolute;top:12px;right:12px"><span style="color:'+sc+';font-weight:bold">● '+st+'</span></div><div style="font-weight:bold;margin-bottom:8px">Порт '+p.port+' | IPv6: '+p.ipv6+'</div><div class="proxy-format">'+(p.connection_format||'')+'</div><button class="copy-btn" onclick="event.stopPropagation();copyText(\''+(p.connection_format||'')+'\')">📋 Копировать</button></div>'}l.innerHTML=h;document.getElementById('delBtn').style.display=selectedProxies.length>0?'inline-block':'none';document.getElementById('rotateBtn').style.display=selectedProxies.length>0?'inline-block':'none'})}
+        function loadProxies(){api('/api/proxies','GET',null,function(d){var l=document.getElementById('proxyList');if(!d.proxies||d.proxies.length===0){l.innerHTML='<div style="text-align:center;padding:40px;color:#666"><h3>Нет прокси</h3></div>';return}var h='';for(var i=0;i<d.proxies.length;i++){var p=d.proxies[i];var s=selectedProxies.indexOf(p.id)>=0?' selected':'';var sc=p.port_open?'var(--green)':'var(--red)';var st=p.port_open?'Открыт':'Закрыт';h+='<div class="proxy-card'+s+'" onclick="selectProxy(\''+p.id+'\')"><div style="position:absolute;top:12px;right:12px"><span style="color:'+sc+';font-weight:bold">● '+st+'</span></div><div style="font-weight:bold;margin-bottom:8px">Порт '+p.port+' | '+p.username+':'+p.password+'</div><div class="proxy-format">'+(p.connection_format||'')+'</div><button class="copy-btn" onclick="event.stopPropagation();copyText(\''+(p.connection_format||'')+'\')">📋 Копировать</button></div>'}l.innerHTML=h;document.getElementById('delBtn').style.display=selectedProxies.length>0?'inline-block':'none';document.getElementById('rotateBtn').style.display=selectedProxies.length>0?'inline-block':'none'})}
         function selectProxy(id){var i=selectedProxies.indexOf(id);if(i>=0)selectedProxies.splice(i,1);else selectedProxies.push(id);loadProxies()}
         function deleteSelected(){if(selectedProxies.length===0)return;if(!confirm('Удалить?'))return;api('/api/proxy/delete','POST',{ids:selectedProxies},function(){selectedProxies=[];toast('Удалено');loadProxies();loadDashboard()})}
         function rotateSelected(){if(selectedProxies.length===0)return;api('/api/proxy/rotate','POST',{ids:selectedProxies},function(){toast('Ротировано');loadProxies()})}
@@ -699,11 +720,8 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-# Права и тестовые прокси
-echo "[8/10] Настройка прав и создание тестовых прокси..."
-chown -R root:root /opt/proxy-farm
-chmod +x /opt/proxy-farm/app.py
-
+# Тестовые прокси
+echo "[8/10] Создание тестовых прокси..."
 cd /opt/proxy-farm && source venv/bin/activate
 python3 << 'PYEOF'
 import json, subprocess, ipaddress, random
@@ -716,27 +734,45 @@ proxies = []
 for i in range(5):
     ipv6 = str(network.network_address + random.getrandbits(64))
     port = 30000 + i
+    login = f"user{port}"
+    passwd = f"pass{port}"
     subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True)
     proxies.append({
         'id': f"p{port}", 'ipv6': ipv6, 'port': port,
-        'username': '1111', 'password': '1111',
+        'username': login, 'password': passwd,
         'created_at': '2026-07-28T00:00:00', 'active': True,
-        'connection_format': f"62.148.226.89:{port}:1111:1111"
+        'connection_format': f"62.148.226.89:{port}:{login}:{passwd}"
     })
 
 with open('/opt/proxy-farm/proxies.json', 'w') as f: json.dump(proxies, f, indent=2)
 
-config = "daemon\nnserver 1.1.1.1\nmaxconn 200\nnscache 65536\ntimeouts 1 5 30 60 180 1800 15 60\nsetgid 65535\nsetuid 65535\n\nauth strong\nusers 1111:CL:1111\n\nallow *\n"
-for p in proxies: config += f"proxy -6 -n -a -p{p['port']} -i192.168.1.7 -e{p['ipv6']}\n"
+config = "daemon\nnserver 1.1.1.1\nmaxconn 200\nnscache 65536\ntimeouts 1 5 30 60 180 1800 15 60\nsetgid 65535\nsetuid 65535\n\nauth strong\n"
+users_added = set()
+for p in proxies:
+    u = f"{p['username']}:{p['password']}"
+    if u not in users_added:
+        config += f"users {p['username']}:CL:{p['password']}\n"
+        users_added.add(u)
+config += "\nallow *\n"
+for p in proxies:
+    config += f"proxy -6 -n -a -p{p['port']} -i192.168.1.7 -e{p['ipv6']}\n"
 config += "flush\n"
 
 with open('/etc/3proxy/3proxy.cfg', 'w') as f: f.write(config)
-with open('/etc/3proxy/.proxyauth', 'w') as f: f.write("1111:CL:1111\n")
-print(f"Создано {len(proxies)} тестовых прокси")
+auth = ""
+for p in proxies:
+    auth += f"{p['username']}:CL:{p['password']}\n"
+with open('/etc/3proxy/.proxyauth', 'w') as f: f.write(auth)
+print(f"Создано {len(proxies)} прокси с уникальными логинами/паролями")
 PYEOF
 
+# Права
+echo "[9/10] Настройка прав..."
+chown -R root:root /opt/proxy-farm
+chmod +x /opt/proxy-farm/app.py
+
 # Запуск
-echo "[9/10] Запуск сервисов..."
+echo "[10/10] Запуск сервисов..."
 systemctl daemon-reload
 systemctl enable 3proxy proxy-farm
 systemctl restart 3proxy proxy-farm
@@ -744,13 +780,18 @@ sleep 3
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          УСТАНОВКА ЗАВЕРШЕНА!                           ║"
+echo "║          УСТАНОВКА ЗАВЕРШЕНА! v4.0                      ║"
 echo "║          http://192.168.1.7:2525                        ║"
 echo "║          http://62.148.226.89:2525                      ║"
 echo "║          Логин: admin / Пароль: Maxim1809               ║"
-echo "║          Прокси: 1111:1111 | Порты: 30000-31000         ║"
+echo "║          Каждый прокси со своим логином/паролем         ║"
+echo "║          Порты: 30000-31000                             ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 INSTALLEOF
 
 chmod +x /root/proxy-farm3/install.sh
-echo "Готово! install.sh обновлен. Загрузите на GitHub."
+echo ""
+echo "========================================="
+echo "  install.sh готов!"
+echo "  Загрузите на GitHub и делайте чистую установку"
+echo "========================================="
