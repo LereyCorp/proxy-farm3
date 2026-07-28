@@ -3,8 +3,8 @@ cat > /root/proxy-farm3/install.sh << 'INSTALLEOF'
 set -e
 
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          ProxyFarm Neo - IPv6 Proxy Server v4.0         ║"
-echo "║          Каждый прокси со своим логином/паролем         ║"
+echo "║          ProxyFarm Neo - IPv6 Proxy Server v5.0         ║"
+echo "║          Фикс паролей + проверка сайтов                 ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
 # Конфигурация
@@ -46,7 +46,7 @@ pip install flask flask-login werkzeug psutil > /dev/null 2>&1
 echo "[5/10] Создание приложения..."
 cat > /opt/proxy-farm/app.py << 'PYEOF'
 #!/usr/bin/env python3
-import sys, os, json, subprocess, time, socket, ipaddress, random, platform, re, string
+import sys, os, json, subprocess, time, socket, ipaddress, random, platform, re
 from datetime import datetime
 
 sys.path.insert(0, '/opt/proxy-farm/venv/lib/python3/dist-packages')
@@ -105,6 +105,15 @@ def load_proxies():
 def save_proxies(proxies):
     with open(PROXY_DB, 'w') as f: json.dump(proxies, f, indent=2)
 
+def generate_safe_password(length=10):
+    """Генерация пароля БЕЗ спецсимволов"""
+    chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
+    return ''.join(random.choice(chars) for _ in range(length))
+
+def generate_safe_username():
+    """Генерация логина БЕЗ спецсимволов"""
+    return f"user{random.randint(10000, 99999)}"
+
 def generate_random_ipv6():
     network = ipaddress.ip_network(IPV6_SUBNET)
     random_bits = random.getrandbits(64)
@@ -154,7 +163,6 @@ setuid 65535
 
 auth strong
 """
-        # Добавляем всех уникальных пользователей
         users_added = set()
         for p in proxies:
             if p.get('active', True):
@@ -210,6 +218,19 @@ def check_proxy_internet(proxy):
         return {'status': 'error', 'error': 'No IPv6'}
     except Exception as e:
         return {'status': 'error', 'error': str(e)}
+
+def check_website_via_proxy(proxy, url):
+    """Проверка сайта через прокси"""
+    try:
+        result = subprocess.run([
+            '/usr/bin/curl', '-x', f"http://{proxy['username']}:{proxy['password']}@{LOCAL_IPV4}:{proxy['port']}",
+            '-s', '-o', '/dev/null', '-w', '%{http_code}', url,
+            '--connect-timeout', '10', '--max-time', '15'
+        ], capture_output=True, text=True, timeout=20)
+        http_code = result.stdout.strip()
+        return {'url': url, 'http_code': http_code, 'accessible': http_code in ['200', '301', '302', '403']}
+    except Exception as e:
+        return {'url': url, 'http_code': '0', 'accessible': False, 'error': str(e)}
 
 def get_system_info():
     info = {
@@ -369,8 +390,9 @@ def api_create():
                 continue
             
             port = available_ports[i]
-            login = username or f"user_{random.randint(10000, 99999)}"
-            passwd = password or ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+            # БЕЗОПАСНЫЕ логин/пароль без спецсимволов
+            login = username or generate_safe_username()
+            passwd = password or generate_safe_password()
             
             proxy = {
                 'id': f"p{port}",
@@ -462,6 +484,35 @@ def check_duplicates():
             seen[p['ipv6']] = [p]
     return jsonify({'duplicates': sum(1 for v in seen.values() if len(v) > 1)})
 
+@app.route('/api/proxy/check-website', methods=['POST'])
+@login_required
+def check_website():
+    """Проверка сайта через выбранный прокси"""
+    try:
+        data = request.json
+        proxy_id = data.get('proxy_id')
+        url = data.get('url', 'http://ipv6.google.com')
+        
+        proxies = load_proxies()
+        proxy = next((p for p in proxies if p['id'] == proxy_id), None)
+        if not proxy:
+            # Если прокси не выбран, берем первый
+            proxy = proxies[0] if proxies else None
+        if not proxy:
+            return jsonify({'error': 'Нет доступных прокси'}), 400
+        
+        # Добавляем http:// если нет
+        if not url.startswith('http'):
+            url = 'http://' + url
+        
+        result = check_website_via_proxy(proxy, url)
+        result['proxy'] = f"{proxy['port']}:{proxy['username']}"
+        result['ipv6'] = proxy['ipv6']
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/server/reboot', methods=['POST'])
 @login_required
 def reboot_server():
@@ -474,18 +525,6 @@ def restart_3proxy_api():
     update_3proxy_config()
     restart_3proxy()
     return jsonify({'message': '3proxy перезапущен'})
-
-@app.route('/api/server/speedtest', methods=['GET'])
-@login_required
-def speedtest():
-    try:
-        start = time.time()
-        subprocess.run(['/usr/bin/curl', '-s', 'http://ipinfo.io/ip', '--connect-timeout', '5'],
-                     capture_output=True, timeout=10)
-        latency = round((time.time() - start) * 1000, 2)
-        return jsonify({'latency_ms': latency, 'status': 'ok'})
-    except:
-        return jsonify({'latency_ms': 0, 'status': 'error'})
 
 if __name__ == '__main__':
     try:
@@ -573,10 +612,10 @@ cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
         .copy-btn:hover{background:#4834d4}
         .section{display:none}
         .section.active{display:block}
-        .form-card{background:var(--card);padding:20px;border-radius:12px;margin-bottom:20px;border:1px solid #2a2a3a}
         .form-input{width:100%;padding:12px;margin:8px 0;background:#181825;border:1px solid #2a2a3a;border-radius:8px;color:#fff;font-size:14px}
         .form-input:focus{outline:none;border-color:#6c5ce7}
         .form-label{color:var(--text2);font-size:11px;display:block;margin-bottom:5px;text-transform:uppercase}
+        select.form-input{appearance:auto}
         .sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:15px}
         .sys-card{background:var(--card);padding:18px;border-radius:12px;border:1px solid #2a2a3a}
         .sys-card h3{color:#a29bfe;margin-bottom:10px}
@@ -601,6 +640,7 @@ cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
         <button class="tab-btn" onclick="showTab('proxies',this)">🌐 Прокси</button>
         <button class="tab-btn" onclick="showTab('create',this)">✨ Создать</button>
         <button class="tab-btn" onclick="showTab('checker',this)">🔍 Проверка</button>
+        <button class="tab-btn" onclick="showTab('sitetest',this)">🌍 Тест сайтов</button>
         <button class="tab-btn" onclick="showTab('system',this)">🖥️ Система</button>
         <button class="tab-btn" onclick="showTab('tools',this)">🔧 Инструменты</button>
         <button class="tab-btn" onclick="window.location.href='/logout'" style="margin-left:auto">🚪 Выйти</button>
@@ -651,6 +691,28 @@ cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
             </div>
             <div class="card"><div id="checkResults">Нажмите "Проверить всё"</div></div>
         </div>
+        <div class="section" id="sitetest">
+            <h2 style="color:#a29bfe;margin-bottom:15px">🌍 Тест сайтов через прокси</h2>
+            <div class="card">
+                <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;align-items:end">
+                    <div>
+                        <label class="form-label">Прокси (порт)</label>
+                        <select class="form-input" id="testProxy"></select>
+                    </div>
+                    <div>
+                        <label class="form-label">URL сайта</label>
+                        <input type="text" class="form-input" id="testUrl" value="ipv6.google.com" placeholder="google.com">
+                    </div>
+                    <div>
+                        <button class="btn btn-success" onclick="testWebsite()" style="width:100%">🔍 Проверить</button>
+                    </div>
+                </div>
+                <div id="siteTestResult" style="margin-top:15px"></div>
+                <div style="margin-top:10px;color:var(--text2);font-size:11px">
+                    Популярные IPv6 сайты: ipv6.google.com, ip6only.me, whatismyv6.com
+                </div>
+            </div>
+        </div>
         <div class="section" id="system">
             <h2 style="color:#a29bfe;margin-bottom:15px">Системная информация</h2>
             <div class="sys-grid" id="sysInfo"></div>
@@ -668,7 +730,7 @@ cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
     <div id="toasts"></div>
     <script>
         var selectedProxies=[];
-        function showTab(n,b){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});document.getElementById(n).classList.add('active');document.querySelectorAll('.tab-btn').forEach(function(x){x.classList.remove('active')});if(b)b.classList.add('active');if(n==='proxies')loadProxies();if(n==='dashboard')loadDashboard();if(n==='system')loadSystem()}
+        function showTab(n,b){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});document.getElementById(n).classList.add('active');document.querySelectorAll('.tab-btn').forEach(function(x){x.classList.remove('active')});if(b)b.classList.add('active');if(n==='proxies')loadProxies();if(n==='dashboard')loadDashboard();if(n==='system')loadSystem();if(n==='sitetest')loadProxySelect()}
         function api(u,m,b,c){m=m||'GET';var x=new XMLHttpRequest();x.open(m,u,true);x.setRequestHeader('Content-Type','application/json');x.onload=function(){c(x.status===200?JSON.parse(x.responseText):{})};x.onerror=function(){c({})};x.send(b?JSON.stringify(b):null)}
         function toast(m,t){t=t||'success';var d=document.createElement('div');d.className='toast '+t;d.textContent=m;document.getElementById('toasts').appendChild(d);setTimeout(function(){d.remove()},3000)}
         function copyText(t){var i=document.createElement('textarea');i.value=t;i.style.position='fixed';i.style.opacity='0';document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);toast('Скопировано!')}
@@ -681,6 +743,8 @@ cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
         function exportProxies(){api('/api/proxies','GET',null,function(d){if(!d.proxies||d.proxies.length===0){toast('Нет прокси','error');return}var t='';for(var i=0;i<d.proxies.length;i++)t+=d.proxies[i].connection_format+'\n';var b=new Blob([t],{type:'text/plain'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='proxies.txt';a.click();toast('Экспортировано')})}
         function checkAll(){document.getElementById('checkResults').innerHTML='<div style="text-align:center;padding:20px">⏳ Проверка...</div>';api('/api/proxy/check-all','GET',null,function(d){var h='<h3 style="color:#a29bfe;margin-bottom:10px">Результаты</h3>';h+='<div style="margin-bottom:10px">Всего: <b>'+d.total+'</b> | Открыто: <b style="color:#00c853">'+d.open+'</b> | Работает: <b style="color:#00c853">'+d.working+'</b></div>';h+='<table class="check-table"><tr><th>Порт</th><th>Порт</th><th>Интернет</th><th>IP</th></tr>';for(var i=0;i<d.results.length;i++){var r=d.results[i];var ps=r.open?'<span style="color:#00c853">✅ Открыт</span>':'<span style="color:#ff1744">❌ Закрыт</span>';var ins=!r.open?'<span style="color:#666">-</span>':(r.internet&&r.internet.status==='working'?'<span style="color:#00c853">✅ IPv6</span>':'<span style="color:#ff1744">❌ Нет</span>');var ip=(r.internet&&r.internet.ip)?'<span style="font-size:10px">'+r.internet.ip+'</span>':'-';h+='<tr><td><b>'+r.port+'</b></td><td>'+ps+'</td><td>'+ins+'</td><td>'+ip+'</td></tr>'}h+='</table>';document.getElementById('checkResults').innerHTML=h;toast('Проверено '+d.total+' прокси')})}
         function checkDuplicates(){api('/api/proxy/check-duplicates','GET',null,function(d){toast(d.duplicates>0?'Дубликатов: '+d.duplicates:'Дубликатов нет',d.duplicates>0?'error':'success')})}
+        function loadProxySelect(){api('/api/proxies','GET',null,function(d){var s=document.getElementById('testProxy');s.innerHTML='';if(d.proxies)for(var i=0;i<d.proxies.length;i++){var p=d.proxies[i];s.innerHTML+='<option value="'+p.id+'">Порт '+p.port+' ('+p.username+':'+p.password+')</option>'}})}
+        function testWebsite(){var pid=document.getElementById('testProxy').value;var url=document.getElementById('testUrl').value;document.getElementById('siteTestResult').innerHTML='<div style="text-align:center;padding:20px">⏳ Проверка '+url+'...</div>';api('/api/proxy/check-website','POST',{proxy_id:pid,url:url},function(d){if(d.error){document.getElementById('siteTestResult').innerHTML='<div style="color:#ff1744">❌ '+d.error+'</div>';return}var color=d.accessible?'#00c853':'#ff1744';var icon=d.accessible?'✅':'❌';document.getElementById('siteTestResult').innerHTML='<div style="background:#1a1a24;padding:15px;border-radius:8px"><div style="font-size:18px;color:'+color+';margin-bottom:10px">'+icon+' HTTP '+d.http_code+' - '+d.url+'</div><div style="color:var(--text2);font-size:12px">Прокси: '+d.proxy+' | IPv6: '+d.ipv6+'</div>'+(d.error?'<div style="color:#ff1744;font-size:12px">'+d.error+'</div>':'')+'</div>'})}
         function loadSystem(){api('/api/system-info','GET',null,function(d){var h='';h+='<div class="sys-card"><h3>🖥️ CPU</h3><div class="sys-value">'+(d.cpu?d.cpu.percent:0)+'%</div><div class="sys-detail">Ядер: '+(d.cpu?d.cpu.count:0)+' | Load: '+((d.system?d.system.load_avg:[0,0,0])[0])+'</div><div class="progress"><div class="progress-fill" style="width:'+(d.cpu?d.cpu.percent:0)+'%"></div></div></div>';h+='<div class="sys-card"><h3>💾 RAM</h3><div class="sys-value">'+(d.memory?d.memory.used:'0')+'/'+(d.memory?d.memory.total:'0')+' GB</div><div class="sys-detail">'+(d.memory?d.memory.percent:0)+'% | Swap: '+(d.swap?d.swap.used:'0')+' GB</div><div class="progress"><div class="progress-fill" style="width:'+(d.memory?d.memory.percent:0)+'%;background:linear-gradient(135deg,#00c853,#69f0ae)"></div></div></div>';h+='<div class="sys-card"><h3>💿 Диски</h3>';for(var i=0;i<(d.disks||[]).length;i++)h+='<div class="sys-detail"><b>'+d.disks[i].mountpoint+'</b>: '+d.disks[i].used+'/'+d.disks[i].total+' GB ('+d.disks[i].percent+'%)</div>';h+='</div>';h+='<div class="sys-card"><h3>🌐 Сеть</h3><div class="sys-detail">Внешний: '+d.network_config.external_ipv4+'</div><div class="sys-detail">Локальный: '+d.network_config.local_ipv4+'</div><div class="sys-detail">IPv6 подсеть: '+d.network_config.ipv6_subnet+'</div><div class="sys-detail">TX: '+(d.network?d.network.sent:'0')+' MB | RX: '+(d.network?d.network.recv:'0')+' MB</div></div>';h+='<div class="sys-card"><h3>📊 Система</h3><div class="sys-detail">Хост: '+d.system.hostname+'</div><div class="sys-detail">ОС: '+d.system.os+'</div><div class="sys-detail">Ядро: '+d.system.kernel+'</div><div class="sys-detail">Аптайм: '+d.system.uptime+'</div></div>';document.getElementById('sysInfo').innerHTML=h})}
         function restart3proxy(){if(!confirm('Перезапустить 3proxy?'))return;api('/api/server/restart-3proxy','POST',null,function(d){toast(d.message||'3proxy перезапущен')})}
         function rebootServer(){if(!confirm('⚠️ Перезагрузить сервер?'))return;api('/api/server/reboot','POST',null,function(d){toast(d.message||'Перезагрузка...','warning')})}
@@ -763,7 +827,7 @@ auth = ""
 for p in proxies:
     auth += f"{p['username']}:CL:{p['password']}\n"
 with open('/etc/3proxy/.proxyauth', 'w') as f: f.write(auth)
-print(f"Создано {len(proxies)} прокси с уникальными логинами/паролями")
+print(f"Создано {len(proxies)} прокси")
 PYEOF
 
 # Права
@@ -780,18 +844,13 @@ sleep 3
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          УСТАНОВКА ЗАВЕРШЕНА! v4.0                      ║"
+echo "║          УСТАНОВКА ЗАВЕРШЕНА! v5.0                      ║"
 echo "║          http://192.168.1.7:2525                        ║"
-echo "║          http://62.148.226.89:2525                      ║"
 echo "║          Логин: admin / Пароль: Maxim1809               ║"
-echo "║          Каждый прокси со своим логином/паролем         ║"
-echo "║          Порты: 30000-31000                             ║"
+echo "║          Пароли без спецсимволов                        ║"
+echo "║          + Вкладка Тест сайтов                          ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 INSTALLEOF
 
 chmod +x /root/proxy-farm3/install.sh
-echo ""
-echo "========================================="
-echo "  install.sh готов!"
-echo "  Загрузите на GitHub и делайте чистую установку"
-echo "========================================="
+echo "Готово! install.sh v5.0 - пароли без спецсимволов + тест сайтов"
