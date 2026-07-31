@@ -68,13 +68,11 @@ text
 🔌	Перезагрузка сервера из веб-интерфейса
 ---
 📦 Формат прокси
+Пример: http://ВНЕШНИЙ_IP:PORT:LOGIN:PASS
+Пример: http://your-server-ip:30000:user30000:pass30000
 
-http://ВНЕШНИЙ_IP:PORT:LOGIN:PASS
-Пример:
-
-http://your-server-ip:30000:user30000:pass30000
 🛠 Управление сервисами
-bash
+
 # Статус сервисов
 systemctl status proxy-farm      # Веб-интерфейс
 systemctl status 3proxy          # Прокси-сервер
@@ -87,6 +85,7 @@ systemctl restart 3proxy         # Прокси-сервер
 journalctl -u proxy-farm -f      # Веб-интерфейс
 journalctl -u 3proxy -f          # Прокси-сервер
 ---
+
 🔧 Проверка прокси вручную
 bash
 # IPv6-only сайт
