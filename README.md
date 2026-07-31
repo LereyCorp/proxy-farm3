@@ -10,6 +10,8 @@ git clone https://github.com/LereyCorp/proxy-farm3.git
 cd proxy-farm3
 sed -i 's/\r$//' install.sh
 bash install.sh
+
+
 📋 Требования
 Ubuntu Server 20.04 / 22.04 / 24.04
 
