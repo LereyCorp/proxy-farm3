@@ -138,7 +138,7 @@ done
 🔗 Ссылки
 GitHub репозиторий
 
-Основано на Temporalitas/ipv6-proxy-server
+Основано на Temporalitas/ipv6-proxy-server и доработано 
 
 3proxy
 
