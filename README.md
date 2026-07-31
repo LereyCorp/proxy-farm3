@@ -73,17 +73,17 @@ text
 
 🛠 Управление сервисами
 
-# Статус сервисов
-systemctl status proxy-farm      # Веб-интерфейс
-systemctl status 3proxy          # Прокси-сервер
+|# Статус сервисов
+systemctl status proxy-farm     
+systemctl status 3proxy          
 
-# Перезапуск
-systemctl restart proxy-farm     # Веб-интерфейс
-systemctl restart 3proxy         # Прокси-сервер
+|# Перезапуск
+systemctl restart proxy-farm     
+systemctl restart 3proxy         
 
-# Логи
-journalctl -u proxy-farm -f      # Веб-интерфейс
-journalctl -u 3proxy -f          # Прокси-сервер
+|# Логи
+journalctl -u proxy-farm -f      
+journalctl -u 3proxy -f          
 ---
 
 🔧 Проверка прокси вручную
