@@ -3,19 +3,75 @@ cat > /root/proxy-farm3/install.sh << 'INSTALLEOF'
 set -e
 
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          ProxyFarm Neo - IPv6 Proxy Server v7.0         ║"
-echo "║          Финальная версия (без ошибок)                  ║"
+echo "║          ProxyFarm Neo - IPv6 Proxy Server v8.0         ║"
+echo "║          Интерактивная установка                        ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
-# Конфигурация
-IPV4_LOCAL="192.168.1.7"
-IPV4_EXTERNAL="62.148.226.89"
-IPV6_SUBNET="2a01:540:44c4:df00::/64"
-IPV6_MAIN="2a01:540:44c4:df00:20c:29ff:fe84:71d1"
-INTERFACE="ens33"
-ADMIN_PASS="Maxim1809"
+# Запрос параметров у пользователя
+echo ""
+echo "=== НАСТРОЙКА ПАРАМЕТРОВ ==="
+echo ""
+
+# Локальный IPv4
+read -p "Локальный IPv4 сервера [192.168.1.7]: " IPV4_LOCAL
+IPV4_LOCAL=${IPV4_LOCAL:-192.168.1.7}
+
+# Внешний IPv4
+read -p "Внешний IPv4 адрес: " IPV4_EXTERNAL
+while [ -z "$IPV4_EXTERNAL" ]; do
+    read -p "Внешний IPv4 адрес (обязательно): " IPV4_EXTERNAL
+done
+
+# IPv6 подсеть
+read -p "IPv6 подсеть (например, 2a01:540:44c4:df00::/64): " IPV6_SUBNET
+while [ -z "$IPV6_SUBNET" ]; do
+    read -p "IPv6 подсеть (обязательно): " IPV6_SUBNET
+done
+
+# IPv6 основной адрес
+read -p "Основной IPv6 адрес сервера: " IPV6_MAIN
+while [ -z "$IPV6_MAIN" ]; do
+    read -p "Основной IPv6 адрес (обязательно): " IPV6_MAIN
+done
+
+# Сетевой интерфейс
+read -p "Сетевой интерфейс [ens33]: " INTERFACE
+INTERFACE=${INTERFACE:-ens33}
+
+# Пароль админа
+read -p "Пароль администратора веб-интерфейса [Maxim1809]: " ADMIN_PASS
+ADMIN_PASS=${ADMIN_PASS:-Maxim1809}
+
+# Порты прокси
+read -p "Начальный порт прокси [30000]: " PROXY_START
+PROXY_START=${PROXY_START:-30000}
+
+read -p "Конечный порт прокси [31000]: " PROXY_END
+PROXY_END=${PROXY_END:-31000}
+
+echo ""
+echo "╔══════════════════════════════════════════════════════════╗"
+echo "║          ПАРАМЕТРЫ УСТАНОВКИ                            ║"
+echo "╠══════════════════════════════════════════════════════════╣"
+echo "║ Локальный IPv4:    $IPV4_LOCAL"
+echo "║ Внешний IPv4:      $IPV4_EXTERNAL"
+echo "║ IPv6 подсеть:      $IPV6_SUBNET"
+echo "║ Основной IPv6:     $IPV6_MAIN"
+echo "║ Интерфейс:         $INTERFACE"
+echo "║ Пароль админа:     $ADMIN_PASS"
+echo "║ Порты прокси:      $PROXY_START-$PROXY_END"
+echo "╚══════════════════════════════════════════════════════════╝"
+echo ""
+
+read -p "Продолжить установку? [Y/n]: " CONFIRM
+CONFIRM=${CONFIRM:-Y}
+if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "Установка отменена."
+    exit 0
+fi
 
 # Установка пакетов
+echo ""
 echo "[1/10] Установка пакетов..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
@@ -44,7 +100,7 @@ pip install flask flask-login werkzeug psutil > /dev/null 2>&1
 
 # Основное приложение
 echo "[5/10] Создание приложения..."
-cat > /opt/proxy-farm/app.py << 'PYEOF'
+cat > /opt/proxy-farm/app.py << PYEOF
 #!/usr/bin/env python3
 import sys, os, json, subprocess, time, socket, ipaddress, random, platform, re
 from datetime import datetime
@@ -68,12 +124,14 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-EXTERNAL_IPV4 = "62.148.226.89"
-LOCAL_IPV4 = "192.168.1.7"
-IPV6_SUBNET = "2a01:540:44c4:df00::/64"
-IPV6_MAIN = "2a01:540:44c4:df00:20c:29ff:fe84:71d1"
-INTERFACE = "ens33"
-ADMIN_HASH = generate_password_hash("Maxim1809")
+EXTERNAL_IPV4 = "$IPV4_EXTERNAL"
+LOCAL_IPV4 = "$IPV4_LOCAL"
+IPV6_SUBNET = "$IPV6_SUBNET"
+IPV6_MAIN = "$IPV6_MAIN"
+INTERFACE = "$INTERFACE"
+PROXY_START = $PROXY_START
+PROXY_END = $PROXY_END
+ADMIN_HASH = generate_password_hash("$ADMIN_PASS")
 
 PROXY_DB = '/opt/proxy-farm/proxies.json'
 USERS_DB = '/opt/proxy-farm/users.json'
@@ -287,7 +345,7 @@ def get_system_info():
             info['processes'] = sorted(info['processes'], key=lambda x: x['cpu'], reverse=True)[:10]
         except: pass
     proxies = load_proxies()
-    info['proxy_stats'] = {'active': sum(1 for p in proxies if p.get('active', True)), 'total': len(proxies), 'ports_used': len(proxies), 'ports_available': 1001 - len(proxies)}
+    info['proxy_stats'] = {'active': sum(1 for p in proxies if p.get('active', True)), 'total': len(proxies), 'ports_used': len(proxies), 'ports_available': (PROXY_END - PROXY_START + 1) - len(proxies)}
     return info
 
 @app.route('/')
@@ -333,7 +391,7 @@ def api_create():
         password = data.get('password') or ''
         proxies = load_proxies()
         used_ports = set(p['port'] for p in proxies)
-        available_ports = [p for p in range(30000, 31001) if p not in used_ports]
+        available_ports = [p for p in range(PROXY_START, PROXY_END + 1) if p not in used_ports]
         if count > len(available_ports):
             return jsonify({'error': 'Недостаточно портов'}), 400
         created = []
@@ -481,9 +539,9 @@ cat > /opt/proxy-farm/templates/login.html << 'HTMLEOF'
 HTMLEOF
 
 cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ProxyFarm Neo v7.0</title>
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ProxyFarm Neo v8.0</title>
 <style>:root{--bg:#0a0a0f;--card:#1e1e2e;--purple:#6c5ce7;--text:#e4e4f0;--text2:#9898b0;--green:#00c853;--red:#ff1744;--yellow:#ffa726}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}.tabs{display:flex;background:#13131a;padding:10px 20px;gap:5px;flex-wrap:wrap;border-bottom:1px solid #2a2a3a;position:sticky;top:0;z-index:100}.tab-btn{padding:12px 20px;background:none;border:none;color:var(--text2);cursor:pointer;border-radius:8px;font-size:14px;transition:.2s;white-space:nowrap}.tab-btn:hover{background:#1a1a24;color:#fff}.tab-btn.active{background:linear-gradient(135deg,#6c5ce7,#4834d4);color:#fff}.logo-tab{background:linear-gradient(135deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold;font-size:16px;margin-right:15px}.main{padding:20px;max-width:1400px;margin:0 auto}.dashboard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px;margin-bottom:20px}.stat-card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a;transition:.3s}.stat-card:hover{border-color:var(--purple);transform:translateY(-2px)}.stat-icon{font-size:32px;margin-bottom:10px}.stat-value{font-size:32px;font-weight:bold;color:#a29bfe}.stat-label{color:var(--text2);font-size:13px;margin-top:5px}.stat-sub{color:var(--text2);font-size:11px;margin-top:3px}.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:20px}.card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a}.card h3{color:#a29bfe;margin-bottom:15px;font-size:18px}.btn{padding:8px 16px;border:none;border-radius:8px;font-size:13px;margin:3px;cursor:pointer;color:#fff;background:linear-gradient(135deg,#6c5ce7,#a29bfe);transition:.2s}.btn:hover{opacity:0.9;transform:translateY(-1px)}.btn-danger{background:linear-gradient(135deg,#ff1744,#ff5252)}.btn-success{background:linear-gradient(135deg,#00c853,#69f0ae)}.btn-warning{background:linear-gradient(135deg,#ffa726,#ffcc80)}.proxy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:15px}.proxy-card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a;position:relative;transition:.2s;cursor:pointer}.proxy-card:hover{border-color:var(--purple)}.proxy-card.selected{border-color:#a29bfe;box-shadow:0 0 15px rgba(108,92,231,0.3)}.proxy-format{background:#1a1a24;padding:12px;border-radius:8px;font-family:monospace;font-size:12px;color:#00ff88;text-align:center;word-break:break-all;margin:10px 0}.copy-btn{display:block;width:100%;padding:10px;background:#6c5ce7;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;text-align:center}.copy-btn:hover{background:#4834d4}.section{display:none}.section.active{display:block}.form-input{width:100%;padding:12px;margin:8px 0;background:#181825;border:1px solid #2a2a3a;border-radius:8px;color:#fff;font-size:14px}.form-input:focus{outline:none;border-color:#6c5ce7}.form-label{color:var(--text2);font-size:11px;display:block;margin-bottom:5px;text-transform:uppercase}select.form-input{appearance:auto}.sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:15px}.sys-card{background:var(--card);padding:18px;border-radius:12px;border:1px solid #2a2a3a}.sys-card h3{color:#a29bfe;margin-bottom:10px}.sys-value{font-size:28px;color:#fff;margin:5px 0}.sys-detail{color:var(--text2);font-size:12px;margin:3px 0}.progress{background:#1a1a24;height:8px;border-radius:4px;margin-top:8px}.progress-fill{background:linear-gradient(135deg,#6c5ce7,#a29bfe);height:100%;border-radius:4px;transition:width 0.5s}.check-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}.check-table th,.check-table td{padding:10px;text-align:left;border-bottom:1px solid #2a2a3a}.check-table th{color:var(--text2)}.toast{position:fixed;top:20px;right:20px;background:var(--card);padding:15px 20px;border-radius:8px;z-index:9999;animation:slideIn .3s}.toast.success{border-left:4px solid var(--green)}.toast.error{border-left:4px solid var(--red)}@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}@media(max-width:768px){.tabs{padding:10px;gap:3px}.tab-btn{padding:8px 12px;font-size:11px}.main{padding:10px}.dashboard-grid{grid-template-columns:repeat(2,1fr);gap:8px}.stat-value{font-size:24px}.proxy-grid,.sys-grid{grid-template-columns:1fr}.row{grid-template-columns:1fr}}</style></head>
-<body><div class="tabs"><span class="logo-tab">⚡ ProxyFarm Neo v7.0</span><button class="tab-btn active" onclick="showTab('dashboard',this)">📊 Дашборд</button><button class="tab-btn" onclick="showTab('proxies',this)">🌐 Прокси</button><button class="tab-btn" onclick="showTab('create',this)">✨ Создать</button><button class="tab-btn" onclick="showTab('checker',this)">🔍 Проверка</button><button class="tab-btn" onclick="showTab('sitetest',this)">🌍 Тест сайтов</button><button class="tab-btn" onclick="showTab('system',this)">🖥️ Система</button><button class="tab-btn" onclick="showTab('tools',this)">🔧 Инструменты</button><button class="tab-btn" onclick="window.location.href='/logout'" style="margin-left:auto">🚪 Выйти</button></div>
+<body><div class="tabs"><span class="logo-tab">⚡ ProxyFarm Neo v8.0</span><button class="tab-btn active" onclick="showTab('dashboard',this)">📊 Дашборд</button><button class="tab-btn" onclick="showTab('proxies',this)">🌐 Прокси</button><button class="tab-btn" onclick="showTab('create',this)">✨ Создать</button><button class="tab-btn" onclick="showTab('checker',this)">🔍 Проверка</button><button class="tab-btn" onclick="showTab('sitetest',this)">🌍 Тест сайтов</button><button class="tab-btn" onclick="showTab('system',this)">🖥️ Система</button><button class="tab-btn" onclick="showTab('tools',this)">🔧 Инструменты</button><button class="tab-btn" onclick="window.location.href='/logout'" style="margin-left:auto">🚪 Выйти</button></div>
 <main class="main">
 <div class="section active" id="dashboard"><div class="dashboard-grid" id="dashStats"></div><div class="row"><div class="card"><h3>📈 CPU</h3><div class="progress" style="height:20px"><div class="progress-fill" id="cpuBar" style="width:0%"></div></div><div style="text-align:center;margin-top:5px;font-size:24px;color:#a29bfe" id="cpuValue">0%</div></div><div class="card"><h3>💾 RAM</h3><div class="progress" style="height:20px"><div class="progress-fill" id="ramBar" style="width:0%;background:linear-gradient(135deg,#00c853,#69f0ae)"></div></div><div style="text-align:center;margin-top:5px;font-size:24px;color:#69f0ae" id="ramValue">0%</div></div></div><div class="row"><div class="card"><h3>🌐 Прокси</h3><div id="proxyStatsDash"></div></div><div class="card"><h3>⚡ Действия</h3><button class="btn btn-warning" onclick="restart3proxy()">🔄 3proxy</button><button class="btn btn-danger" onclick="rebootServer()">🔌 Reboot</button></div></div></div>
 <div class="section" id="proxies"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px"><h2 style="color:#a29bfe">Список прокси</h2><div><button class="btn btn-success" onclick="exportProxies()">📥 Экспорт</button><button class="btn" onclick="checkDuplicates()">🔍 Дубликаты</button><button class="btn" onclick="rotateSelected()" id="rotateBtn" style="display:none">🔄 Ротировать</button><button class="btn btn-danger" onclick="deleteSelected()" id="delBtn" style="display:none">🗑️ Удалить</button></div></div><div class="proxy-grid" id="proxyList"></div></div>
@@ -550,21 +608,24 @@ EOF
 # Тестовые прокси
 echo "[8/10] Создание тестовых прокси..."
 cd /opt/proxy-farm && source venv/bin/activate
-python3 << 'PYEOF'
+python3 << PYEOF
 import json, subprocess, ipaddress, random
 
-INTERFACE = "ens33"
-IPV6_SUBNET = "2a01:540:44c4:df00::/64"
+INTERFACE = "$INTERFACE"
+IPV6_SUBNET = "$IPV6_SUBNET"
+IPV4_EXTERNAL = "$IPV4_EXTERNAL"
+IPV4_LOCAL = "$IPV4_LOCAL"
+PROXY_START = $PROXY_START
 network = ipaddress.ip_network(IPV6_SUBNET)
 proxies = []
 
 for i in range(5):
     ipv6 = str(network.network_address + random.getrandbits(64))
-    port = 30000 + i
+    port = PROXY_START + i
     login = f"user{port}"
     passwd = f"pass{port}"
     subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True)
-    proxies.append({'id': f"p{port}", 'ipv6': ipv6, 'port': port, 'username': login, 'password': passwd, 'created_at': '2026-07-28T00:00:00', 'active': True, 'connection_format': f"http://62.148.226.89:{port}:{login}:{passwd}"})
+    proxies.append({'id': f"p{port}", 'ipv6': ipv6, 'port': port, 'username': login, 'password': passwd, 'created_at': '2026-07-28T00:00:00', 'active': True, 'connection_format': f"http://{IPV4_EXTERNAL}:{port}:{login}:{passwd}"})
 
 with open('/opt/proxy-farm/proxies.json', 'w') as f: json.dump(proxies, f, indent=2)
 
@@ -576,7 +637,7 @@ for p in proxies:
         config += f"users {p['username']}:CL:{p['password']}\n"
         users_added.add(u)
 config += "\nallow *\n"
-for p in proxies: config += f"proxy -6 -n -a -p{p['port']} -i192.168.1.7 -e{p['ipv6']}\n"
+for p in proxies: config += f"proxy -6 -n -a -p{p['port']} -i{IPV4_LOCAL} -e{p['ipv6']}\n"
 config += "flush\n"
 with open('/etc/3proxy/3proxy.cfg', 'w') as f: f.write(config)
 auth = ""
@@ -599,12 +660,11 @@ sleep 3
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          УСТАНОВКА ЗАВЕРШЕНА! v7.0 FINAL                ║"
-echo "║          http://192.168.1.7:2525                        ║"
-echo "║          Логин: admin / Пароль: Maxim1809               ║"
-echo "║          Формат: http://IP:PORT:LOGIN:PASS              ║"
-echo "║          Пароли без спецсимволов                        ║"
-echo "║          Прогрев прокси                                ║"
+echo "║          УСТАНОВКА ЗАВЕРШЕНА! v8.0                      ║"
+echo "║          http://$IPV4_LOCAL:2525                     ║"
+echo "║          Логин: admin                                   ║"
+echo "║          Пароль: $ADMIN_PASS                            ║"
+echo "║          Прокси: $IPV4_EXTERNAL:$PROXY_START...         ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 INSTALLEOF
 
@@ -612,6 +672,6 @@ chmod +x /root/proxy-farm3/install.sh
 
 echo ""
 echo "========================================="
-echo "  ГОТОВО! v7.0 FINAL"
+echo "  ГОТОВО! v8.0 - без ваших данных"
 echo "  Загрузите install.sh на GitHub"
 echo "========================================="
