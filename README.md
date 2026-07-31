@@ -33,6 +33,7 @@ git clone https://github.com/LereyCorp/proxy-farm3.git
 cd proxy-farm3
 sed -i 's/\r$//' install.sh
 bash install.sh
+---
 ⚙️ Параметры установки
 При запуске скрипт запросит следующие параметры:
 
@@ -44,6 +45,7 @@ IPv6 подсеть	❗ обязательно	Выделенная /64 подс
 Интерфейс	ens33	Сетевой интерфейс (ens33, eth0, ens3)
 Пароль админа	Maxim1809	Пароль для веб-интерфейса
 Порты прокси	30000-31000	Диапазон портов
+---
 🌐 Доступ к веб-интерфейсу
 Адрес
 🏠 Локально	http://ЛОКАЛЬНЫЙ_IP:2525
@@ -64,6 +66,7 @@ text
 📱	Адаптивный дизайн (ПК + мобильные)
 📥	Экспорт прокси в файл
 🔌	Перезагрузка сервера из веб-интерфейса
+---
 📦 Формат прокси
 text
 http://ВНЕШНИЙ_IP:PORT:LOGIN:PASS
@@ -84,6 +87,7 @@ systemctl restart 3proxy         # Прокси-сервер
 # Логи
 journalctl -u proxy-farm -f      # Веб-интерфейс
 journalctl -u 3proxy -f          # Прокси-сервер
+---
 🔧 Проверка прокси вручную
 bash
 # IPv6-only сайт
@@ -91,6 +95,7 @@ curl -x http://LOGIN:PASS@ЛОКАЛЬНЫЙ_IP:PORT -s http://ip6only.me/api/
 
 # Google IPv6
 curl -x http://LOGIN:PASS@ЛОКАЛЬНЫЙ_IP:PORT -s http://ipv6.google.com -I
+---
 📁 Структура проекта
 text
 /opt/proxy-farm/
@@ -125,6 +130,7 @@ for ip in $(ip -6 addr show dev ens33 | grep 'scope global' | grep -v dynamic | 
         ip -6 addr del $ip/64 dev ens33 2>/dev/null
     fi
 done
+---
 ⚠️ Важная информация
 🔒	Пароли генерируются без спецсимволов
 🔄	После перезагрузки сервера всё восстанавливается автоматически
