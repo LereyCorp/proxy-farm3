@@ -4,52 +4,77 @@ set -e
 
 clear
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          ProxyFarm Neo - IPv6 Proxy Server v9.0         ║"
-echo "║          Интерактивная установка                        ║"
+echo "║          ProxyFarm Neo - IPv6 Proxy Server v10.0        ║"
+echo "║          Автоматическое определение данных              ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
-# Автоопределение IPv4
-AUTO_IPV4=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
-AUTO_IPV6=$(ip -6 addr show scope global | grep -oP '(?<=inet6\s)[0-9a-f:]+' | head -1)
-AUTO_INTERFACE=$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" {print $1}' | head -1)
+# === АВТООПРЕДЕЛЕНИЕ ВСЕХ ДАННЫХ ===
+echo ""
+echo "🔍 Анализ системы..."
+
+# Локальный IPv4
+IPV4_LOCAL=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
+if [ -z "$IPV4_LOCAL" ]; then
+    IPV4_LOCAL=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
+fi
+
+# Основной IPv6
+IPV6_MAIN=$(ip -6 addr show scope global | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/64)' | grep -v ^fe80 | head -1)
+if [ -z "$IPV6_MAIN" ]; then
+    IPV6_MAIN=$(ip -6 addr show | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/64)' | grep -v ^fe80 | head -1)
+fi
+
+# IPv6 подсеть (берем первые 4 блока + ::/64)
+IPV6_SUBNET=$(echo $IPV6_MAIN | grep -oP '^([0-9a-f:]+:){3}[0-9a-f]+')"::/64"
+
+# Сетевой интерфейс
+INTERFACE=$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" {print $1}' | head -1)
+if [ -z "$INTERFACE" ]; then
+    INTERFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -1)
+fi
+
+# Внешний IPv4 (пытаемся определить)
+IPV4_EXTERNAL=$(curl -s --connect-timeout 3 ifconfig.me 2>/dev/null || curl -s --connect-timeout 3 ipinfo.io/ip 2>/dev/null || echo "")
 
 echo ""
-echo "=== СИСТЕМА ОБНАРУЖИЛА ==="
-echo "Локальный IPv4:  $AUTO_IPV4"
-echo "Основной IPv6:   $AUTO_IPV6"
-echo "Интерфейс:       $AUTO_INTERFACE"
+echo "=== АВТООПРЕДЕЛЕНИЕ ==="
+echo "Локальный IPv4:  $IPV4_LOCAL"
+echo "Основной IPv6:   $IPV6_MAIN"
+echo "IPv6 подсеть:    $IPV6_SUBNET"
+echo "Интерфейс:       $INTERFACE"
+echo "Внешний IPv4:    ${IPV4_EXTERNAL:-не определен}"
 echo ""
 
-# === ВВОД ДАННЫХ ===
-read -p "Введите ЛОКАЛЬНЫЙ IPv4 сервера [$AUTO_IPV4]: " IPV4_LOCAL
-IPV4_LOCAL=${IPV4_LOCAL:-$AUTO_IPV4}
+# === ПОДТВЕРЖДЕНИЕ ИЛИ РУЧНОЙ ВВОД ===
+echo "Нажмите ENTER чтобы использовать автоопределение, или введите свои данные:"
+echo ""
 
-read -p "Введите ВНЕШНИЙ IPv4 адрес (для клиентов): " IPV4_EXTERNAL
+read -p "Локальный IPv4 [$IPV4_LOCAL]: " input
+IPV4_LOCAL=${input:-$IPV4_LOCAL}
+
+read -p "Внешний IPv4 [${IPV4_EXTERNAL:-введите обязательно}]: " input
+IPV4_EXTERNAL=${input:-$IPV4_EXTERNAL}
 while [ -z "$IPV4_EXTERNAL" ]; do
-    echo "❌ Внешний IPv4 обязателен!"
-    read -p "Введите ВНЕШНИЙ IPv4 адрес: " IPV4_EXTERNAL
+    read -p "❌ Внешний IPv4 обязателен! Введите: " IPV4_EXTERNAL
 done
 
-read -p "Введите IPv6 ПОДСЕТЬ (например: 2a01:540:44e1:c00::/64): " IPV6_SUBNET
-while [ -z "$IPV6_SUBNET" ]; do
-    echo "❌ IPv6 подсеть обязательна!"
-    read -p "Введите IPv6 ПОДСЕТЬ: " IPV6_SUBNET
-done
+read -p "IPv6 подсеть [$IPV6_SUBNET]: " input
+IPV6_SUBNET=${input:-$IPV6_SUBNET}
 
-read -p "Введите ОСНОВНОЙ IPv6 сервера [$AUTO_IPV6]: " IPV6_MAIN
-IPV6_MAIN=${IPV6_MAIN:-$AUTO_IPV6}
+read -p "Основной IPv6 [$IPV6_MAIN]: " input
+IPV6_MAIN=${input:-$IPV6_MAIN}
 
-read -p "Введите СЕТЕВОЙ ИНТЕРФЕЙС [$AUTO_INTERFACE]: " INTERFACE
-INTERFACE=${INTERFACE:-$AUTO_INTERFACE}
+read -p "Интерфейс [$INTERFACE]: " input
+INTERFACE=${input:-$INTERFACE}
 
-read -p "Введите ПАРОЛЬ админа веб-интерфейса [Maxim1809]: " ADMIN_PASS
-ADMIN_PASS=${ADMIN_PASS:-Maxim1809}
+read -p "Пароль админа [Maxim1809]: " input
+ADMIN_PASS=${input:-Maxim1809}
 
-read -p "Введите НАЧАЛЬНЫЙ порт прокси [30000]: " PROXY_START
-PROXY_START=${PROXY_START:-30000}
+read -p "Начальный порт [30000]: " input
+PROXY_START=${input:-30000}
 
-read -p "Введите КОНЕЧНЫЙ порт прокси [31000]: " PROXY_END
-PROXY_END=${PROXY_END:-31000}
+read -p "Конечный порт [31000]: " input
+PROXY_END=${input:-31000}
 
 # === ПОДТВЕРЖДЕНИЕ ===
 echo ""
@@ -68,7 +93,7 @@ echo "╚═══════════════════════�
 read -p "Всё верно? Начать установку? [Y/n]: " CONFIRM
 CONFIRM=${CONFIRM:-Y}
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "Установка отменена. Запустите заново: bash install.sh"
+    echo "Установка отменена."
     exit 0
 fi
 
@@ -190,24 +215,6 @@ def remove_ipv6(ipv6):
         subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'del', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True)
     except: pass
 
-def get_interface_ipv6():
-    result = subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'show', 'dev', INTERFACE], capture_output=True, text=True)
-    ips = []
-    for line in result.stdout.split('\n'):
-        if 'inet6' in line and 'scope global' in line:
-            ips.append(line.strip().split()[1].split('/')[0])
-    return ips
-
-def warmup_proxy(proxy):
-    try:
-        for _ in range(2):
-            subprocess.run([
-                '/usr/bin/curl', '-x', f"http://{proxy['username']}:{proxy['password']}@{LOCAL_IPV4}:{proxy['port']}",
-                '-s', 'http://ip6only.me/api/', '--connect-timeout', '10', '--max-time', '15'
-            ], capture_output=True, timeout=20)
-            time.sleep(1)
-    except: pass
-
 def update_3proxy_config():
     try:
         proxies = load_proxies()
@@ -276,46 +283,6 @@ def check_proxy_internet(proxy):
             if attempt < 2: time.sleep(2)
     return {'status': 'error', 'error': 'No response'}
 
-def get_system_info():
-    info = {
-        'cpu': {'percent': 0, 'count': 0, 'freq_current': 0},
-        'memory': {'percent': 0, 'used': '0', 'total': '0', 'available': '0'},
-        'swap': {'percent': 0, 'used': '0', 'total': '0'},
-        'disks': [],
-        'network': {'sent': '0', 'recv': '0'},
-        'system': {
-            'hostname': socket.gethostname(),
-            'os': f"{platform.system()} {platform.release()}",
-            'kernel': platform.release(),
-            'uptime': 'N/A',
-            'load_avg': [0, 0, 0]
-        },
-        'network_config': {
-            'external_ipv4': EXTERNAL_IPV4,
-            'local_ipv4': LOCAL_IPV4,
-            'ipv6_main': IPV6_MAIN,
-            'ipv6_subnet': IPV6_SUBNET
-        },
-        'proxy_stats': {'active': 0, 'total': 0, 'ports_available': 0},
-        'processes': []
-    }
-    if PSUTIL:
-        try:
-            info['cpu'] = {'percent': round(psutil.cpu_percent(interval=0.3), 1), 'count': psutil.cpu_count()}
-            mem = psutil.virtual_memory()
-            info['memory'] = {'percent': mem.percent, 'used': f"{mem.used/(1024**3):.1f}", 'total': f"{mem.total/(1024**3):.1f}"}
-            for part in psutil.disk_partitions():
-                try:
-                    usage = psutil.disk_usage(part.mountpoint)
-                    info['disks'].append({'mountpoint': part.mountpoint, 'used': f"{usage.used/(1024**3):.1f}", 'total': f"{usage.total/(1024**3):.1f}", 'percent': usage.percent})
-                except: pass
-            uptime = int(time.time() - psutil.boot_time())
-            info['system']['uptime'] = f"{uptime//3600}ч {(uptime%3600)//60}м"
-        except: pass
-    proxies = load_proxies()
-    info['proxy_stats'] = {'active': sum(1 for p in proxies if p.get('active', True)), 'total': len(proxies), 'ports_available': (PROXY_END - PROXY_START + 1) - len(proxies)}
-    return info
-
 @app.route('/')
 @login_required
 def index():
@@ -334,11 +301,6 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
-
-@app.route('/api/system-info')
-@login_required
-def system_info():
-    return jsonify(get_system_info())
 
 @app.route('/api/proxies')
 @login_required
@@ -380,8 +342,6 @@ def api_create():
         save_proxies(proxies)
         update_3proxy_config()
         restart_3proxy()
-        for proxy in created:
-            warmup_proxy(proxy)
         return jsonify({'message': f'Создано {len(created)} прокси', 'proxies': created})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -412,18 +372,12 @@ def api_rotate():
     save_proxies(proxies)
     update_3proxy_config()
     restart_3proxy()
-    for proxy in proxies:
-        if proxy['id'] in ids:
-            warmup_proxy(proxy)
     return jsonify({'message': 'Ротировано'})
 
 @app.route('/api/proxy/check-all')
 @login_required
 def check_all():
     proxies = load_proxies()
-    interface_ips = get_interface_ipv6()
-    for p in proxies:
-        if p['ipv6'] not in interface_ips: add_ipv6(p['ipv6'])
     results = []
     for p in proxies:
         port_open = check_port(p['port'])
@@ -454,8 +408,6 @@ def restart_3proxy_api():
     try:
         update_3proxy_config()
         restart_3proxy()
-        for p in load_proxies():
-            warmup_proxy(p)
         return jsonify({'message': '3proxy перезапущен'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -472,18 +424,13 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=2525, debug=False, threaded=True)
 PYEOF
 
-# HTML шаблоны
+# HTML
 echo "[6/8] Создание веб-интерфейса..."
 cat > /opt/proxy-farm/templates/login.html << 'HTMLEOF'
 <!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ProxyFarm Neo - Вход</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:linear-gradient(135deg,#0a0a0f,#1a1a2e);min-height:100vh;display:flex;align-items:center;justify-content:center}.login-box{background:rgba(30,30,46,0.95);padding:40px;border-radius:20px;box-shadow:0 10px 40px rgba(0,0,0,0.5);width:380px;max-width:90%;border:1px solid #333}h1{color:#a29bfe;text-align:center;margin-bottom:30px;font-size:28px}input{width:100%;padding:12px;margin:10px 0;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;font-size:16px}input:focus{outline:none;border-color:#6c5ce7}button{width:100%;padding:12px;background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;border-radius:8px;color:#fff;font-size:16px;cursor:pointer;margin-top:10px}button:hover{opacity:0.9}.error{background:rgba(255,0,0,0.1);color:#ff4444;padding:10px;border-radius:8px;margin-bottom:15px;text-align:center}</style></head>
 <body><div class="login-box"><h1>⚡ ProxyFarm Neo</h1>{% if error %}<div class="error">{{ error }}</div>{% endif %}<form method="POST"><input type="text" name="username" placeholder="Логин" required><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form></div></body></html>
 HTMLEOF
-
-# Копируем index.html если есть
-if [ ! -f /opt/proxy-farm/templates/index.html ]; then
-    wget -q -O /opt/proxy-farm/templates/index.html https://raw.githubusercontent.com/LereyCorp/proxy-farm3/main/index.html 2>/dev/null || echo "HTML будет создан при первом запуске"
-fi
 
 # Сервисы
 echo "[7/8] Создание сервисов..."
@@ -514,8 +461,8 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-# Тестовые прокси
-echo "[8/8] Создание тестовых прокси и запуск..."
+# Тестовые прокси и запуск
+echo "[8/8] Создание прокси и запуск..."
 cd /opt/proxy-farm && source venv/bin/activate
 python3 << PYEOF
 import json, subprocess, ipaddress, random
@@ -565,7 +512,7 @@ sleep 3
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          УСТАНОВКА ЗАВЕРШЕНА! v9.0                      ║"
+echo "║          УСТАНОВКА ЗАВЕРШЕНА! v10.0                     ║"
 echo "║          http://$IPV4_LOCAL:2525                     ║"
 echo "║          Логин: admin / Пароль: $ADMIN_PASS             ║"
 echo "║          Прокси: $IPV4_EXTERNAL:$PROXY_START...         ║"
@@ -573,9 +520,7 @@ echo "╚═══════════════════════�
 INSTALLEOF
 
 chmod +x /root/proxy-farm3/install.sh
-
 echo ""
 echo "========================================="
-echo "  ГОТОВО! v9.0 - Интерактивная установка"
-echo "  Загрузите install.sh на GitHub"
+echo "  ГОТОВО! v10.0 - Автоопределение из ip a"
 echo "========================================="
