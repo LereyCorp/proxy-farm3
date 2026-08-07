@@ -4,37 +4,28 @@ set -e
 
 clear
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          ProxyFarm Neo - IPv6 Proxy Server v10.0        ║"
-echo "║          Автоматическое определение данных              ║"
+echo "║          ProxyFarm Neo - IPv6 Proxy Server v11.0        ║"
+echo "║          Автоопределение + фикс IPv4/IPv6              ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
-# === АВТООПРЕДЕЛЕНИЕ ВСЕХ ДАННЫХ ===
+# === АВТООПРЕДЕЛЕНИЕ ===
 echo ""
 echo "🔍 Анализ системы..."
 
-# Локальный IPv4
 IPV4_LOCAL=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
-if [ -z "$IPV4_LOCAL" ]; then
-    IPV4_LOCAL=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
-fi
+[ -z "$IPV4_LOCAL" ] && IPV4_LOCAL=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
 
-# Основной IPv6
 IPV6_MAIN=$(ip -6 addr show scope global | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/64)' | grep -v ^fe80 | head -1)
-if [ -z "$IPV6_MAIN" ]; then
-    IPV6_MAIN=$(ip -6 addr show | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/64)' | grep -v ^fe80 | head -1)
-fi
+[ -z "$IPV6_MAIN" ] && IPV6_MAIN=$(ip -6 addr show | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/64)' | grep -v ^fe80 | head -1)
 
-# IPv6 подсеть (берем первые 4 блока + ::/64)
-IPV6_SUBNET=$(echo $IPV6_MAIN | grep -oP '^([0-9a-f:]+:){3}[0-9a-f]+')"::/64"
+# Правильная подсеть: первые 4 блока + ::/64
+IPV6_SUBNET=$(echo "$IPV6_MAIN" | awk -F: '{print $1":"$2":"$3":"$4"::/64"}')
 
-# Сетевой интерфейс
 INTERFACE=$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" {print $1}' | head -1)
-if [ -z "$INTERFACE" ]; then
-    INTERFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -1)
-fi
+[ -z "$INTERFACE" ] && INTERFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -1)
 
-# Внешний IPv4 (пытаемся определить)
-IPV4_EXTERNAL=$(curl -s --connect-timeout 3 ifconfig.me 2>/dev/null || curl -s --connect-timeout 3 ipinfo.io/ip 2>/dev/null || echo "")
+# Внешний IPv4 - ТОЛЬКО IPv4 через curl -4
+IPV4_EXTERNAL=$(curl -4 -s --connect-timeout 3 ifconfig.me 2>/dev/null || curl -4 -s --connect-timeout 3 ipinfo.io/ip 2>/dev/null || curl -4 -s --connect-timeout 3 icanhazip.com 2>/dev/null || echo "")
 
 echo ""
 echo "=== АВТООПРЕДЕЛЕНИЕ ==="
@@ -45,14 +36,14 @@ echo "Интерфейс:       $INTERFACE"
 echo "Внешний IPv4:    ${IPV4_EXTERNAL:-не определен}"
 echo ""
 
-# === ПОДТВЕРЖДЕНИЕ ИЛИ РУЧНОЙ ВВОД ===
+# === ВВОД ДАННЫХ ===
 echo "Нажмите ENTER чтобы использовать автоопределение, или введите свои данные:"
 echo ""
 
 read -p "Локальный IPv4 [$IPV4_LOCAL]: " input
 IPV4_LOCAL=${input:-$IPV4_LOCAL}
 
-read -p "Внешний IPv4 [${IPV4_EXTERNAL:-введите обязательно}]: " input
+read -p "Внешний IPv4 (для клиентов) [${IPV4_EXTERNAL:-введите обязательно}]: " input
 IPV4_EXTERNAL=${input:-$IPV4_EXTERNAL}
 while [ -z "$IPV4_EXTERNAL" ]; do
     read -p "❌ Внешний IPv4 обязателен! Введите: " IPV4_EXTERNAL
@@ -64,19 +55,19 @@ IPV6_SUBNET=${input:-$IPV6_SUBNET}
 read -p "Основной IPv6 [$IPV6_MAIN]: " input
 IPV6_MAIN=${input:-$IPV6_MAIN}
 
-read -p "Интерфейс [$INTERFACE]: " input
+read -p "Сетевой интерфейс [$INTERFACE]: " input
 INTERFACE=${input:-$INTERFACE}
 
-read -p "Пароль админа [Maxim1809]: " input
+read -p "Пароль админа веб-интерфейса [Maxim1809]: " input
 ADMIN_PASS=${input:-Maxim1809}
 
-read -p "Начальный порт [30000]: " input
+read -p "Начальный порт прокси [30000]: " input
 PROXY_START=${input:-30000}
 
-read -p "Конечный порт [31000]: " input
+read -p "Конечный порт прокси [31000]: " input
 PROXY_END=${input:-31000}
 
-# === ПОДТВЕРЖДЕНИЕ ===
+# === ПРОВЕРКА ===
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║          ПРОВЕРЬТЕ ДАННЫЕ                               ║"
@@ -93,7 +84,7 @@ echo "╚═══════════════════════�
 read -p "Всё верно? Начать установку? [Y/n]: " CONFIRM
 CONFIRM=${CONFIRM:-Y}
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "Установка отменена."
+    echo "Установка отменена. Запустите заново: bash install.sh"
     exit 0
 fi
 
@@ -396,6 +387,33 @@ def check_duplicates():
         else: seen[p['ipv6']] = [p]
     return jsonify({'duplicates': sum(1 for v in seen.values() if len(v) > 1)})
 
+@app.route('/api/settings/change-password', methods=['POST'])
+@login_required
+def change_password():
+    try:
+        data = request.json
+        old_password = data.get('old_password', '')
+        new_password = data.get('new_password', '')
+        if not old_password or not new_password:
+            return jsonify({'error': 'Введите старый и новый пароль'}), 400
+        if len(new_password) < 6:
+            return jsonify({'error': 'Пароль должен быть не менее 6 символов'}), 400
+        if not check_password_hash(ADMIN_HASH, old_password):
+            return jsonify({'error': 'Неверный текущий пароль'}), 403
+        new_hash = generate_password_hash(new_password)
+        try:
+            with open(USERS_DB) as f: users = json.load(f)
+        except: users = []
+        for u in users:
+            if u.get('username') == 'admin':
+                u['password'] = new_hash
+        with open(USERS_DB, 'w') as f: json.dump(users, f, indent=2)
+        import app as app_module
+        app_module.ADMIN_HASH = new_hash
+        return jsonify({'message': 'Пароль успешно изменен!'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/server/reboot', methods=['POST'])
 @login_required
 def reboot_server():
@@ -461,7 +479,7 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-# Тестовые прокси и запуск
+# Тестовые прокси
 echo "[8/8] Создание прокси и запуск..."
 cd /opt/proxy-farm && source venv/bin/activate
 python3 << PYEOF
@@ -481,7 +499,7 @@ for i in range(5):
     login = f"user{port}"
     passwd = f"pass{port}"
     subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True)
-    proxies.append({'id': f"p{port}", 'ipv6': ipv6, 'port': port, 'username': login, 'password': passwd, 'created_at': '2026-08-06T00:00:00', 'active': True, 'connection_format': f"http://{IPV4_EXTERNAL}:{port}:{login}:{passwd}"})
+    proxies.append({'id': f"p{port}", 'ipv6': ipv6, 'port': port, 'username': login, 'password': passwd, 'created_at': '2026-08-07T00:00:00', 'active': True, 'connection_format': f"http://{IPV4_EXTERNAL}:{port}:{login}:{passwd}"})
 
 with open('/opt/proxy-farm/proxies.json', 'w') as f: json.dump(proxies, f, indent=2)
 
@@ -512,7 +530,7 @@ sleep 3
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          УСТАНОВКА ЗАВЕРШЕНА! v10.0                     ║"
+echo "║          УСТАНОВКА ЗАВЕРШЕНА! v11.0                     ║"
 echo "║          http://$IPV4_LOCAL:2525                     ║"
 echo "║          Логин: admin / Пароль: $ADMIN_PASS             ║"
 echo "║          Прокси: $IPV4_EXTERNAL:$PROXY_START...         ║"
@@ -522,5 +540,7 @@ INSTALLEOF
 chmod +x /root/proxy-farm3/install.sh
 echo ""
 echo "========================================="
-echo "  ГОТОВО! v10.0 - Автоопределение из ip a"
+echo "  ГОТОВО! v11.0 - Фикс автоопределения"
+echo "  IPv4 внешний определяется через curl -4"
+echo "  IPv6 подсеть правильно вычисляется"
 echo "========================================="
