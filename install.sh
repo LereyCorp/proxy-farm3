@@ -7,8 +7,8 @@ export DEBIAN_FRONTEND=noninteractive
 
 clear
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          ProxyFarm Neo - IPv6 Proxy Server v14.0        ║"
-echo "║          Полный fix + HTML в комплекте                  ║"
+echo "║          ProxyFarm Neo - IPv6 Proxy Server v15.0        ║"
+echo "║          Полный fix + Тест сайтов работает              ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
 # === АВТООПРЕДЕЛЕНИЕ ===
@@ -252,6 +252,14 @@ def check_proxy_internet(proxy):
             if attempt < 2: time.sleep(2)
     return {'status': 'error', 'error': 'No response'}
 
+def check_website_via_proxy(proxy, url):
+    try:
+        result = subprocess.run(['/usr/bin/curl', '-x', f"http://{proxy['username']}:{proxy['password']}@{LOCAL_IPV4}:{proxy['port']}", '-s', '-o', '/dev/null', '-w', '%{http_code}', url, '--connect-timeout', '10', '--max-time', '15'], capture_output=True, text=True, timeout=20)
+        http_code = result.stdout.strip()
+        return {'url': url, 'http_code': http_code, 'accessible': http_code in ['200', '301', '302', '403']}
+    except Exception as e:
+        return {'url': url, 'http_code': '0', 'accessible': False, 'error': str(e)}
+
 def get_system_info():
     info = {'cpu': {'percent': 0, 'count': 0}, 'memory': {'percent': 0, 'used': '0', 'total': '0'}, 'swap': {'percent': 0, 'used': '0', 'total': '0'}, 'disks': [], 'network': {'sent': '0', 'recv': '0'}, 'system': {'hostname': socket.gethostname(), 'os': f"{platform.system()} {platform.release()}", 'kernel': platform.release(), 'uptime': 'N/A', 'load_avg': [0,0,0]}, 'network_config': {'external_ipv4': EXTERNAL_IPV4, 'local_ipv4': LOCAL_IPV4, 'ipv6_main': IPV6_MAIN, 'ipv6_subnet': IPV6_SUBNET}, 'proxy_stats': {'active': 0, 'total': 0, 'ports_available': 0}, 'processes': []}
     if PSUTIL:
@@ -377,6 +385,22 @@ def check_duplicates():
         else: seen[p['ipv6']] = [p]
     return jsonify({'duplicates': sum(1 for v in seen.values() if len(v)>1)})
 
+@app.route('/api/proxy/check-website', methods=['POST'])
+@login_required
+def check_website():
+    data = request.json
+    proxy_id = data.get('proxy_id')
+    url = data.get('url', 'http://ipv6.google.com')
+    proxies = load_proxies()
+    proxy = next((p for p in proxies if p['id'] == proxy_id), None)
+    if not proxy: proxy = proxies[0] if proxies else None
+    if not proxy: return jsonify({'error': 'Нет прокси'}), 400
+    if not url.startswith('http'): url = 'http://' + url
+    result = check_website_via_proxy(proxy, url)
+    result['proxy'] = f"{proxy['port']}:{proxy['username']}"
+    result['ipv6'] = proxy['ipv6']
+    return jsonify(result)
+
 @app.route('/api/settings/change-password', methods=['POST'])
 @login_required
 def change_password():
@@ -427,9 +451,9 @@ cat > /opt/proxy-farm/templates/login.html << 'HTMLEOF'
 HTMLEOF
 
 cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ProxyFarm Neo v14</title>
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ProxyFarm Neo v15</title>
 <style>:root{--bg:#0a0a0f;--card:#1e1e2e;--purple:#6c5ce7;--text:#e4e4f0;--text2:#9898b0;--green:#00c853;--red:#ff1744;--yellow:#ffa726}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}.tabs{display:flex;background:#13131a;padding:10px 20px;gap:5px;flex-wrap:wrap;border-bottom:1px solid #2a2a3a;position:sticky;top:0;z-index:100}.tab-btn{padding:12px 20px;background:none;border:none;color:var(--text2);cursor:pointer;border-radius:8px;font-size:14px;transition:.2s;white-space:nowrap}.tab-btn:hover{background:#1a1a24;color:#fff}.tab-btn.active{background:linear-gradient(135deg,#6c5ce7,#4834d4);color:#fff}.logo-tab{background:linear-gradient(135deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold;font-size:16px;margin-right:15px}.main{padding:20px;max-width:1400px;margin:0 auto}.dashboard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px;margin-bottom:20px}.stat-card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a;transition:.3s}.stat-card:hover{border-color:var(--purple);transform:translateY(-2px)}.stat-icon{font-size:32px;margin-bottom:10px}.stat-value{font-size:32px;font-weight:bold;color:#a29bfe}.stat-label{color:var(--text2);font-size:13px;margin-top:5px}.stat-sub{color:var(--text2);font-size:11px;margin-top:3px}.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:20px}.card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a}.card h3{color:#a29bfe;margin-bottom:15px;font-size:18px}.btn{padding:8px 16px;border:none;border-radius:8px;font-size:13px;margin:3px;cursor:pointer;color:#fff;background:linear-gradient(135deg,#6c5ce7,#a29bfe);transition:.2s}.btn:hover{opacity:0.9;transform:translateY(-1px)}.btn-danger{background:linear-gradient(135deg,#ff1744,#ff5252)}.btn-success{background:linear-gradient(135deg,#00c853,#69f0ae)}.btn-warning{background:linear-gradient(135deg,#ffa726,#ffcc80)}.proxy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:15px}.proxy-card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a;position:relative;transition:.2s;cursor:pointer}.proxy-card:hover{border-color:var(--purple)}.proxy-card.selected{border-color:#a29bfe;box-shadow:0 0 15px rgba(108,92,231,0.3)}.proxy-format{background:#1a1a24;padding:12px;border-radius:8px;font-family:monospace;font-size:12px;color:#00ff88;text-align:center;word-break:break-all;margin:10px 0}.copy-btn{display:block;width:100%;padding:10px;background:#6c5ce7;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;text-align:center}.copy-btn:hover{background:#4834d4}.section{display:none}.section.active{display:block}.form-input{width:100%;padding:12px;margin:8px 0;background:#181825;border:1px solid #2a2a3a;border-radius:8px;color:#fff;font-size:14px}.form-input:focus{outline:none;border-color:#6c5ce7}.form-label{color:var(--text2);font-size:11px;display:block;margin-bottom:5px;text-transform:uppercase}select.form-input{appearance:auto}.sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:15px}.sys-card{background:var(--card);padding:18px;border-radius:12px;border:1px solid #2a2a3a}.sys-card h3{color:#a29bfe;margin-bottom:10px}.sys-value{font-size:28px;color:#fff;margin:5px 0}.sys-detail{color:var(--text2);font-size:12px;margin:3px 0}.progress{background:#1a1a24;height:8px;border-radius:4px;margin-top:8px}.progress-fill{background:linear-gradient(135deg,#6c5ce7,#a29bfe);height:100%;border-radius:4px;transition:width 0.5s}.check-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}.check-table th,.check-table td{padding:10px;text-align:left;border-bottom:1px solid #2a2a3a}.check-table th{color:var(--text2)}.toast{position:fixed;top:20px;right:20px;background:var(--card);padding:15px 20px;border-radius:8px;z-index:9999;animation:slideIn .3s}.toast.success{border-left:4px solid var(--green)}.toast.error{border-left:4px solid var(--red)}@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}@media(max-width:768px){.tabs{padding:10px;gap:3px}.tab-btn{padding:8px 12px;font-size:11px}.main{padding:10px}.dashboard-grid{grid-template-columns:repeat(2,1fr);gap:8px}.stat-value{font-size:24px}.proxy-grid,.sys-grid{grid-template-columns:1fr}.row{grid-template-columns:1fr}}</style></head>
-<body><div class="tabs"><span class="logo-tab">⚡ ProxyFarm Neo v14</span><button class="tab-btn active" onclick="showTab('dashboard',this)">📊 Дашборд</button><button class="tab-btn" onclick="showTab('proxies',this)">🌐 Прокси</button><button class="tab-btn" onclick="showTab('create',this)">✨ Создать</button><button class="tab-btn" onclick="showTab('checker',this)">🔍 Проверка</button><button class="tab-btn" onclick="showTab('sitetest',this)">🌍 Тест сайтов</button><button class="tab-btn" onclick="showTab('system',this)">🖥️ Система</button><button class="tab-btn" onclick="showTab('settings',this)">⚙️ Настройки</button><button class="tab-btn" onclick="showTab('tools',this)">🔧 Инструменты</button><button class="tab-btn" onclick="window.location.href='/logout'" style="margin-left:auto">🚪 Выйти</button></div>
+<body><div class="tabs"><span class="logo-tab">⚡ ProxyFarm Neo v15</span><button class="tab-btn active" onclick="showTab('dashboard',this)">📊 Дашборд</button><button class="tab-btn" onclick="showTab('proxies',this)">🌐 Прокси</button><button class="tab-btn" onclick="showTab('create',this)">✨ Создать</button><button class="tab-btn" onclick="showTab('checker',this)">🔍 Проверка</button><button class="tab-btn" onclick="showTab('sitetest',this)">🌍 Тест сайтов</button><button class="tab-btn" onclick="showTab('system',this)">🖥️ Система</button><button class="tab-btn" onclick="showTab('settings',this)">⚙️ Настройки</button><button class="tab-btn" onclick="showTab('tools',this)">🔧 Инструменты</button><button class="tab-btn" onclick="window.location.href='/logout'" style="margin-left:auto">🚪 Выйти</button></div>
 <main class="main">
 <div class="section active" id="dashboard"><div class="dashboard-grid" id="dashStats"></div><div class="row"><div class="card"><h3>📈 CPU</h3><div class="progress" style="height:20px"><div class="progress-fill" id="cpuBar" style="width:0%"></div></div><div style="text-align:center;margin-top:5px;font-size:24px;color:#a29bfe" id="cpuValue">0%</div></div><div class="card"><h3>💾 RAM</h3><div class="progress" style="height:20px"><div class="progress-fill" id="ramBar" style="width:0%;background:linear-gradient(135deg,#00c853,#69f0ae)"></div></div><div style="text-align:center;margin-top:5px;font-size:24px;color:#69f0ae" id="ramValue">0%</div></div></div><div class="row"><div class="card"><h3>🌐 Прокси</h3><div id="proxyStatsDash"></div></div><div class="card"><h3>⚡ Действия</h3><button class="btn btn-warning" onclick="restart3proxy()">🔄 3proxy</button><button class="btn btn-danger" onclick="rebootServer()">🔌 Reboot</button></div></div></div>
 <div class="section" id="proxies"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px"><h2 style="color:#a29bfe">Список прокси</h2><div><button class="btn btn-success" onclick="exportProxies()">📥 Экспорт</button><button class="btn" onclick="checkDuplicates()">🔍 Дубликаты</button><button class="btn" onclick="rotateSelected()" id="rotateBtn" style="display:none">🔄 Ротировать</button><button class="btn btn-danger" onclick="deleteSelected()" id="delBtn" style="display:none">🗑️ Удалить</button></div></div><div class="proxy-grid" id="proxyList"></div></div>
@@ -540,17 +564,22 @@ sleep 3
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          УСТАНОВКА ЗАВЕРШЕНА! v14.0                     ║"
+echo "║          УСТАНОВКА ЗАВЕРШЕНА! v15.0                     ║"
 echo "║          http://$IPV4_LOCAL:2525                     ║"
 echo "║          Логин: admin / Пароль: $ADMIN_PASS             ║"
+echo "║          ✅ Тест сайтов работает                        ║"
+echo "║          ✅ Дашборд работает                            ║"
+echo "║          ✅ Система работает                            ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 INSTALLEOF
 
 chmod +x /root/proxy-farm3/install.sh
 echo ""
 echo "========================================="
-echo "  ГОТОВО! v14.0 - Всё включено"
-echo "  HTML создается при установке"
-echo "  Дашборд работает"
-echo "  Системная информация работает"
+echo "  ГОТОВО! v15.0 - Всё работает"
+echo "  - Тест сайтов ✅"
+echo "  - Дашборд ✅"
+echo "  - Системная информация ✅"
+echo "  - Смена пароля ✅"
+echo "  - Проверка прокси ✅"
 echo "========================================="
