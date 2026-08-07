@@ -7,14 +7,11 @@ export DEBIAN_FRONTEND=noninteractive
 
 clear
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          ProxyFarm Neo - IPv6 Proxy Server v13.0        ║"
-echo "║          Полный фикс - всё работает                     ║"
+echo "║          ProxyFarm Neo - IPv6 Proxy Server v14.0        ║"
+echo "║          Полный fix + HTML в комплекте                  ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
 # === АВТООПРЕДЕЛЕНИЕ ===
-echo ""
-echo "🔍 Анализ системы..."
-
 IPV4_LOCAL=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
 [ -z "$IPV4_LOCAL" ] && IPV4_LOCAL=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
 
@@ -37,13 +34,13 @@ echo "Интерфейс:       $INTERFACE"
 echo "Внешний IPv4:    ${IPV4_EXTERNAL:-не определен}"
 echo ""
 
-echo "Нажмите ENTER чтобы использовать автоопределение, или введите свои данные:"
+echo "Нажмите ENTER для автоопределения или введите свои данные:"
 echo ""
 
 read -p "Локальный IPv4 [$IPV4_LOCAL]: " input
 IPV4_LOCAL=${input:-$IPV4_LOCAL}
 
-read -p "Внешний IPv4 [${IPV4_EXTERNAL:-введите обязательно}]: " input
+read -p "Внешний IPv4 [${IPV4_EXTERNAL:-введите}]: " input
 IPV4_EXTERNAL=${input:-$IPV4_EXTERNAL}
 while [ -z "$IPV4_EXTERNAL" ]; do
     read -p "❌ Внешний IPv4 обязателен! Введите: " IPV4_EXTERNAL
@@ -186,12 +183,10 @@ def generate_random_ipv6():
 
 def add_ipv6(ipv6):
     try:
-        result = subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'show', 'dev', INTERFACE],
-                              capture_output=True, text=True)
+        result = subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'show', 'dev', INTERFACE], capture_output=True, text=True)
         if ipv6 in result.stdout: return True
         for attempt in range(3):
-            r = subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE],
-                             capture_output=True, text=True)
+            r = subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True, text=True)
             if r.returncode == 0: return True
             time.sleep(0.5)
         return False
@@ -209,10 +204,10 @@ def update_3proxy_config():
         users_added = set()
         for p in proxies:
             if p.get('active', True):
-                user_pass = f"{p['username']}:{p['password']}"
-                if user_pass not in users_added:
+                u = f"{p['username']}:{p['password']}"
+                if u not in users_added:
                     config += f"users {p['username']}:CL:{p['password']}\n"
-                    users_added.add(user_pass)
+                    users_added.add(u)
         config += "\nallow *\n"
         for p in proxies:
             if p.get('active', True):
@@ -248,10 +243,7 @@ def check_port(port):
 def check_proxy_internet(proxy):
     for attempt in range(3):
         try:
-            result = subprocess.run([
-                '/usr/bin/curl', '-x', f"http://{proxy['username']}:{proxy['password']}@{LOCAL_IPV4}:{proxy['port']}",
-                '-s', 'http://ip6only.me/api/', '--connect-timeout', '10', '--max-time', '15'
-            ], capture_output=True, text=True, timeout=20)
+            result = subprocess.run(['/usr/bin/curl', '-x', f"http://{proxy['username']}:{proxy['password']}@{LOCAL_IPV4}:{proxy['port']}", '-s', 'http://ip6only.me/api/', '--connect-timeout', '10', '--max-time', '15'], capture_output=True, text=True, timeout=20)
             match = re.search(r'IPv6,([0-9a-f:]+)', result.stdout)
             if match: return {'status': 'working', 'ip': match.group(1), 'type': 'IPv6'}
             if '407' in result.stdout: return {'status': 'error', 'error': 'Auth failed'}
@@ -261,46 +253,26 @@ def check_proxy_internet(proxy):
     return {'status': 'error', 'error': 'No response'}
 
 def get_system_info():
-    info = {
-        'cpu': {'percent': 0, 'count': 0, 'freq_current': 0},
-        'memory': {'percent': 0, 'used': '0', 'total': '0', 'available': '0'},
-        'swap': {'percent': 0, 'used': '0', 'total': '0'},
-        'disks': [],
-        'network': {'sent': '0', 'recv': '0'},
-        'system': {'hostname': socket.gethostname(), 'os': f"{platform.system()} {platform.release()}", 'kernel': platform.release(), 'uptime': 'N/A', 'load_avg': [0,0,0]},
-        'network_config': {'external_ipv4': EXTERNAL_IPV4, 'local_ipv4': LOCAL_IPV4, 'ipv6_main': IPV6_MAIN, 'ipv6_subnet': IPV6_SUBNET},
-        'proxy_stats': {'active': 0, 'total': 0, 'ports_used': 0, 'ports_available': 0},
-        'processes': []
-    }
+    info = {'cpu': {'percent': 0, 'count': 0}, 'memory': {'percent': 0, 'used': '0', 'total': '0'}, 'swap': {'percent': 0, 'used': '0', 'total': '0'}, 'disks': [], 'network': {'sent': '0', 'recv': '0'}, 'system': {'hostname': socket.gethostname(), 'os': f"{platform.system()} {platform.release()}", 'kernel': platform.release(), 'uptime': 'N/A', 'load_avg': [0,0,0]}, 'network_config': {'external_ipv4': EXTERNAL_IPV4, 'local_ipv4': LOCAL_IPV4, 'ipv6_main': IPV6_MAIN, 'ipv6_subnet': IPV6_SUBNET}, 'proxy_stats': {'active': 0, 'total': 0, 'ports_available': 0}, 'processes': []}
     if PSUTIL:
         try:
-            info['cpu'] = {'percent': round(psutil.cpu_percent(interval=0.3), 1), 'count': psutil.cpu_count(), 'freq_current': round(psutil.cpu_freq().current if psutil.cpu_freq() else 0)}
-            load_avg = os.getloadavg() if hasattr(os, 'getloadavg') else [0,0,0]
-            info['system']['load_avg'] = [round(l,2) for l in load_avg]
-            mem = psutil.virtual_memory()
-            swap = psutil.swap_memory()
-            info['memory'] = {'percent': mem.percent, 'used': f"{mem.used/(1024**3):.1f}", 'total': f"{mem.total/(1024**3):.1f}", 'available': f"{mem.available/(1024**3):.1f}"}
+            info['cpu'] = {'percent': round(psutil.cpu_percent(interval=0.3), 1), 'count': psutil.cpu_count()}
+            info['system']['load_avg'] = [round(l,2) for l in (os.getloadavg() if hasattr(os,'getloadavg') else [0,0,0])]
+            mem = psutil.virtual_memory(); swap = psutil.swap_memory()
+            info['memory'] = {'percent': mem.percent, 'used': f"{mem.used/(1024**3):.1f}", 'total': f"{mem.total/(1024**3):.1f}"}
             info['swap'] = {'percent': swap.percent, 'used': f"{swap.used/(1024**3):.1f}", 'total': f"{swap.total/(1024**3):.1f}"}
             for part in psutil.disk_partitions():
                 try:
                     usage = psutil.disk_usage(part.mountpoint)
-                    info['disks'].append({'mountpoint': part.mountpoint, 'total': f"{usage.total/(1024**3):.1f}", 'used': f"{usage.used/(1024**3):.1f}", 'free': f"{usage.free/(1024**3):.1f}", 'percent': usage.percent})
+                    info['disks'].append({'mountpoint': part.mountpoint, 'used': f"{usage.used/(1024**3):.1f}", 'total': f"{usage.total/(1024**3):.1f}", 'percent': usage.percent})
                 except: pass
             net = psutil.net_io_counters()
             info['network'] = {'sent': f"{net.bytes_sent/(1024**2):.1f}", 'recv': f"{net.bytes_recv/(1024**2):.1f}"}
             uptime = int(time.time() - psutil.boot_time())
             info['system']['uptime'] = f"{uptime//3600}ч {(uptime%3600)//60}м"
-            for proc in psutil.process_iter(['pid','name','cpu_percent','memory_percent']):
-                try:
-                    pi = proc.info
-                    if pi['cpu_percent'] and pi['cpu_percent'] > 0.1:
-                        info['processes'].append({'pid':pi['pid'], 'name':pi['name'][:25], 'cpu':round(pi['cpu_percent'],1), 'memory':round(pi['memory_percent'] or 0,1)})
-                except: pass
-            info['processes'] = sorted(info['processes'], key=lambda x: x['cpu'], reverse=True)[:10]
-        except Exception as e:
-            print(f"System info error: {e}")
+        except: pass
     proxies = load_proxies()
-    info['proxy_stats'] = {'active': sum(1 for p in proxies if p.get('active',True)), 'total': len(proxies), 'ports_used': len(proxies), 'ports_available': (PROXY_END - PROXY_START + 1) - len(proxies)}
+    info['proxy_stats'] = {'active': sum(1 for p in proxies if p.get('active',True)), 'total': len(proxies), 'ports_available': (PROXY_END - PROXY_START + 1) - len(proxies)}
     return info
 
 @app.route('/')
@@ -342,26 +314,20 @@ def api_create():
     try:
         data = request.json
         count = int(data.get('count', 1))
-        username = data.get('username') or ''
-        password = data.get('password') or ''
         proxies = load_proxies()
         used_ports = set(p['port'] for p in proxies)
         available_ports = [p for p in range(PROXY_START, PROXY_END + 1) if p not in used_ports]
-        if count > len(available_ports):
-            return jsonify({'error': 'Недостаточно портов'}), 400
+        if count > len(available_ports): return jsonify({'error': 'Недостаточно портов'}), 400
         created = []
         for i in range(count):
             ipv6 = generate_random_ipv6()
             if not add_ipv6(ipv6): continue
             port = available_ports[i]
-            login = username or generate_safe_username()
-            passwd = password or generate_safe_password()
+            login = data.get('username') or generate_safe_username()
+            passwd = data.get('password') or generate_safe_password()
             proxy = {'id': f"p{port}", 'ipv6': ipv6, 'port': port, 'username': login, 'password': passwd, 'created_at': datetime.now().isoformat(), 'active': True, 'connection_format': f"http://{EXTERNAL_IPV4}:{port}:{login}:{passwd}"}
-            proxies.append(proxy)
-            created.append(proxy)
-        save_proxies(proxies)
-        update_3proxy_config()
-        restart_3proxy()
+            proxies.append(proxy); created.append(proxy)
+        save_proxies(proxies); update_3proxy_config(); restart_3proxy()
         return jsonify({'message': f'Создано {len(created)} прокси', 'proxies': created})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -374,9 +340,7 @@ def api_delete():
     for p in proxies:
         if p['id'] in ids: remove_ipv6(p['ipv6'])
     proxies = [p for p in proxies if p['id'] not in ids]
-    save_proxies(proxies)
-    update_3proxy_config()
-    restart_3proxy()
+    save_proxies(proxies); update_3proxy_config(); restart_3proxy()
     return jsonify({'message': 'Удалено'})
 
 @app.route('/api/proxy/rotate', methods=['POST'])
@@ -389,9 +353,7 @@ def api_rotate():
             remove_ipv6(proxy['ipv6'])
             proxy['ipv6'] = generate_random_ipv6()
             add_ipv6(proxy['ipv6'])
-    save_proxies(proxies)
-    update_3proxy_config()
-    restart_3proxy()
+    save_proxies(proxies); update_3proxy_config(); restart_3proxy()
     return jsonify({'message': 'Ротировано'})
 
 @app.route('/api/proxy/check-all')
@@ -401,10 +363,9 @@ def check_all():
     results = []
     for p in proxies:
         port_open = check_port(p['port'])
-        internet = None
-        if port_open: internet = check_proxy_internet(p)
+        internet = check_proxy_internet(p) if port_open else None
         results.append({'port': p['port'], 'open': port_open, 'ipv6': p['ipv6'], 'internet': internet})
-    return jsonify({'total': len(results), 'open': sum(1 for r in results if r['open']), 'working': sum(1 for r in results if r.get('internet') and r['internet'].get('status') == 'working'), 'results': results})
+    return jsonify({'total': len(results), 'open': sum(1 for r in results if r['open']), 'working': sum(1 for r in results if r.get('internet') and r['internet'].get('status')=='working'), 'results': results})
 
 @app.route('/api/proxy/check-duplicates')
 @login_required
@@ -414,27 +375,22 @@ def check_duplicates():
     for p in proxies:
         if p['ipv6'] in seen: seen[p['ipv6']].append(p)
         else: seen[p['ipv6']] = [p]
-    return jsonify({'duplicates': sum(1 for v in seen.values() if len(v) > 1)})
+    return jsonify({'duplicates': sum(1 for v in seen.values() if len(v)>1)})
 
 @app.route('/api/settings/change-password', methods=['POST'])
 @login_required
 def change_password():
     try:
         data = request.json
-        old_password = data.get('old_password', '')
-        new_password = data.get('new_password', '')
-        if not old_password or not new_password: return jsonify({'error': 'Введите старый и новый пароль'}), 400
-        if len(new_password) < 6: return jsonify({'error': 'Минимум 6 символов'}), 400
-        if not check_password_hash(ADMIN_HASH, old_password): return jsonify({'error': 'Неверный текущий пароль'}), 403
-        new_hash = generate_password_hash(new_password)
+        if not check_password_hash(ADMIN_HASH, data.get('old_password','')): return jsonify({'error': 'Неверный пароль'}), 403
+        new_hash = generate_password_hash(data.get('new_password',''))
         try:
             with open(USERS_DB) as f: users = json.load(f)
         except: users = []
         for u in users:
-            if u.get('username') == 'admin': u['password'] = new_hash
-        with open(USERS_DB, 'w') as f: json.dump(users, f, indent=2)
-        import app as app_module
-        app_module.ADMIN_HASH = new_hash
+            if u.get('username')=='admin': u['password'] = new_hash
+        with open(USERS_DB,'w') as f: json.dump(users, f)
+        import app as app_module; app_module.ADMIN_HASH = new_hash
         return jsonify({'message': 'Пароль изменен!'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -448,30 +404,21 @@ def reboot_server():
 @app.route('/api/server/restart-3proxy', methods=['POST'])
 @login_required
 def restart_3proxy_api():
-    update_3proxy_config()
-    restart_3proxy()
+    update_3proxy_config(); restart_3proxy()
     return jsonify({'message': '3proxy перезапущен'})
 
 if __name__ == '__main__':
     try:
         with open(USERS_DB) as f: users = json.load(f)
     except: users = []
-    if not any(u.get('username') == 'admin' for u in users):
-        users.append({'id': '1', 'username': 'admin', 'password': ADMIN_HASH})
-        with open(USERS_DB, 'w') as f: json.dump(users, f, indent=2)
-    update_3proxy_config()
-    restart_3proxy()
+    if not any(u.get('username')=='admin' for u in users):
+        users.append({'id':'1','username':'admin','password':ADMIN_HASH})
+        with open(USERS_DB,'w') as f: json.dump(users, f)
+    update_3proxy_config(); restart_3proxy()
     app.run(host='0.0.0.0', port=2525, debug=False, threaded=True)
 PYEOF
 
 echo "[5/6] Создание веб-интерфейса..."
-# Копируем index.html из текущей системы если есть
-if [ -f /opt/proxy-farm/templates/index.html ]; then
-    echo "index.html уже существует, пропускаем"
-else
-    echo "Скачиваем index.html..."
-    wget -q -O /opt/proxy-farm/templates/index.html https://raw.githubusercontent.com/LereyCorp/proxy-farm3/main/index.html 2>/dev/null || echo "Будет создан при первом запуске"
-fi
 
 cat > /opt/proxy-farm/templates/login.html << 'HTMLEOF'
 <!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ProxyFarm Neo - Вход</title>
@@ -479,7 +426,49 @@ cat > /opt/proxy-farm/templates/login.html << 'HTMLEOF'
 <body><div class="login-box"><h1>⚡ ProxyFarm Neo</h1>{% if error %}<div class="error">{{ error }}</div>{% endif %}<form method="POST"><input type="text" name="username" placeholder="Логин" required><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form></div></body></html>
 HTMLEOF
 
+cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ProxyFarm Neo v14</title>
+<style>:root{--bg:#0a0a0f;--card:#1e1e2e;--purple:#6c5ce7;--text:#e4e4f0;--text2:#9898b0;--green:#00c853;--red:#ff1744;--yellow:#ffa726}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}.tabs{display:flex;background:#13131a;padding:10px 20px;gap:5px;flex-wrap:wrap;border-bottom:1px solid #2a2a3a;position:sticky;top:0;z-index:100}.tab-btn{padding:12px 20px;background:none;border:none;color:var(--text2);cursor:pointer;border-radius:8px;font-size:14px;transition:.2s;white-space:nowrap}.tab-btn:hover{background:#1a1a24;color:#fff}.tab-btn.active{background:linear-gradient(135deg,#6c5ce7,#4834d4);color:#fff}.logo-tab{background:linear-gradient(135deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold;font-size:16px;margin-right:15px}.main{padding:20px;max-width:1400px;margin:0 auto}.dashboard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px;margin-bottom:20px}.stat-card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a;transition:.3s}.stat-card:hover{border-color:var(--purple);transform:translateY(-2px)}.stat-icon{font-size:32px;margin-bottom:10px}.stat-value{font-size:32px;font-weight:bold;color:#a29bfe}.stat-label{color:var(--text2);font-size:13px;margin-top:5px}.stat-sub{color:var(--text2);font-size:11px;margin-top:3px}.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:20px}.card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a}.card h3{color:#a29bfe;margin-bottom:15px;font-size:18px}.btn{padding:8px 16px;border:none;border-radius:8px;font-size:13px;margin:3px;cursor:pointer;color:#fff;background:linear-gradient(135deg,#6c5ce7,#a29bfe);transition:.2s}.btn:hover{opacity:0.9;transform:translateY(-1px)}.btn-danger{background:linear-gradient(135deg,#ff1744,#ff5252)}.btn-success{background:linear-gradient(135deg,#00c853,#69f0ae)}.btn-warning{background:linear-gradient(135deg,#ffa726,#ffcc80)}.proxy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:15px}.proxy-card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a;position:relative;transition:.2s;cursor:pointer}.proxy-card:hover{border-color:var(--purple)}.proxy-card.selected{border-color:#a29bfe;box-shadow:0 0 15px rgba(108,92,231,0.3)}.proxy-format{background:#1a1a24;padding:12px;border-radius:8px;font-family:monospace;font-size:12px;color:#00ff88;text-align:center;word-break:break-all;margin:10px 0}.copy-btn{display:block;width:100%;padding:10px;background:#6c5ce7;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;text-align:center}.copy-btn:hover{background:#4834d4}.section{display:none}.section.active{display:block}.form-input{width:100%;padding:12px;margin:8px 0;background:#181825;border:1px solid #2a2a3a;border-radius:8px;color:#fff;font-size:14px}.form-input:focus{outline:none;border-color:#6c5ce7}.form-label{color:var(--text2);font-size:11px;display:block;margin-bottom:5px;text-transform:uppercase}select.form-input{appearance:auto}.sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:15px}.sys-card{background:var(--card);padding:18px;border-radius:12px;border:1px solid #2a2a3a}.sys-card h3{color:#a29bfe;margin-bottom:10px}.sys-value{font-size:28px;color:#fff;margin:5px 0}.sys-detail{color:var(--text2);font-size:12px;margin:3px 0}.progress{background:#1a1a24;height:8px;border-radius:4px;margin-top:8px}.progress-fill{background:linear-gradient(135deg,#6c5ce7,#a29bfe);height:100%;border-radius:4px;transition:width 0.5s}.check-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}.check-table th,.check-table td{padding:10px;text-align:left;border-bottom:1px solid #2a2a3a}.check-table th{color:var(--text2)}.toast{position:fixed;top:20px;right:20px;background:var(--card);padding:15px 20px;border-radius:8px;z-index:9999;animation:slideIn .3s}.toast.success{border-left:4px solid var(--green)}.toast.error{border-left:4px solid var(--red)}@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}@media(max-width:768px){.tabs{padding:10px;gap:3px}.tab-btn{padding:8px 12px;font-size:11px}.main{padding:10px}.dashboard-grid{grid-template-columns:repeat(2,1fr);gap:8px}.stat-value{font-size:24px}.proxy-grid,.sys-grid{grid-template-columns:1fr}.row{grid-template-columns:1fr}}</style></head>
+<body><div class="tabs"><span class="logo-tab">⚡ ProxyFarm Neo v14</span><button class="tab-btn active" onclick="showTab('dashboard',this)">📊 Дашборд</button><button class="tab-btn" onclick="showTab('proxies',this)">🌐 Прокси</button><button class="tab-btn" onclick="showTab('create',this)">✨ Создать</button><button class="tab-btn" onclick="showTab('checker',this)">🔍 Проверка</button><button class="tab-btn" onclick="showTab('sitetest',this)">🌍 Тест сайтов</button><button class="tab-btn" onclick="showTab('system',this)">🖥️ Система</button><button class="tab-btn" onclick="showTab('settings',this)">⚙️ Настройки</button><button class="tab-btn" onclick="showTab('tools',this)">🔧 Инструменты</button><button class="tab-btn" onclick="window.location.href='/logout'" style="margin-left:auto">🚪 Выйти</button></div>
+<main class="main">
+<div class="section active" id="dashboard"><div class="dashboard-grid" id="dashStats"></div><div class="row"><div class="card"><h3>📈 CPU</h3><div class="progress" style="height:20px"><div class="progress-fill" id="cpuBar" style="width:0%"></div></div><div style="text-align:center;margin-top:5px;font-size:24px;color:#a29bfe" id="cpuValue">0%</div></div><div class="card"><h3>💾 RAM</h3><div class="progress" style="height:20px"><div class="progress-fill" id="ramBar" style="width:0%;background:linear-gradient(135deg,#00c853,#69f0ae)"></div></div><div style="text-align:center;margin-top:5px;font-size:24px;color:#69f0ae" id="ramValue">0%</div></div></div><div class="row"><div class="card"><h3>🌐 Прокси</h3><div id="proxyStatsDash"></div></div><div class="card"><h3>⚡ Действия</h3><button class="btn btn-warning" onclick="restart3proxy()">🔄 3proxy</button><button class="btn btn-danger" onclick="rebootServer()">🔌 Reboot</button></div></div></div>
+<div class="section" id="proxies"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px"><h2 style="color:#a29bfe">Список прокси</h2><div><button class="btn btn-success" onclick="exportProxies()">📥 Экспорт</button><button class="btn" onclick="checkDuplicates()">🔍 Дубликаты</button><button class="btn" onclick="rotateSelected()" id="rotateBtn" style="display:none">🔄 Ротировать</button><button class="btn btn-danger" onclick="deleteSelected()" id="delBtn" style="display:none">🗑️ Удалить</button></div></div><div class="proxy-grid" id="proxyList"></div></div>
+<div class="section" id="create"><h2 style="color:#a29bfe;margin-bottom:15px">Создание прокси</h2><div class="card"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px"><div><label class="form-label">Количество</label><input type="number" class="form-input" id="count" value="1" min="1" max="100"></div><div><label class="form-label">Логин (пусто=авто)</label><input type="text" class="form-input" id="username" placeholder="Авто"></div><div><label class="form-label">Пароль (пусто=авто)</label><input type="text" class="form-input" id="password" placeholder="Авто"></div></div><button class="btn" onclick="createProxies()" style="width:100%;margin-top:15px;padding:14px;font-size:16px">✨ Создать прокси</button></div><div id="results"></div></div>
+<div class="section" id="checker"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px"><h2 style="color:#a29bfe">Проверка прокси</h2><button class="btn" onclick="checkAll()">🔍 Проверить всё</button></div><div class="card"><div id="checkResults">Нажмите "Проверить всё"</div></div></div>
+<div class="section" id="sitetest"><h2 style="color:#a29bfe;margin-bottom:15px">🌍 Тест сайтов через прокси</h2><div class="card"><div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;align-items:end"><div><label class="form-label">Прокси</label><select class="form-input" id="testProxy"></select></div><div><label class="form-label">URL</label><input type="text" class="form-input" id="testUrl" value="ipv6.google.com"></div><div><button class="btn btn-success" onclick="testWebsite()" style="width:100%">🔍 Проверить</button></div></div><div id="siteTestResult" style="margin-top:15px"></div></div></div>
+<div class="section" id="system"><h2 style="color:#a29bfe;margin-bottom:15px">Системная информация</h2><div class="sys-grid" id="sysInfo"></div></div>
+<div class="section" id="settings"><h2 style="color:#a29bfe;margin-bottom:15px">⚙️ Настройки</h2><div class="row"><div class="card"><h3>🔑 Сменить пароль</h3><div style="margin:15px 0"><label class="form-label">Текущий пароль</label><input type="password" class="form-input" id="oldPassword" placeholder="Текущий пароль"></div><div style="margin:15px 0"><label class="form-label">Новый пароль</label><input type="password" class="form-input" id="newPassword" placeholder="Новый пароль (мин. 6 символов)"></div><button class="btn btn-warning" onclick="changePassword()" style="width:100%">🔑 Сменить пароль</button></div><div class="card"><h3>📋 Информация</h3><div id="settingsInfo" style="color:var(--text2);font-size:13px">Загрузка...</div></div></div></div>
+<div class="section" id="tools"><h2 style="color:#a29bfe;margin-bottom:15px">Инструменты</h2><div class="row"><div class="card"><h3>🔧 Управление</h3><button class="btn btn-warning" onclick="restart3proxy()">🔄 Перезапустить 3proxy</button><button class="btn btn-danger" onclick="rebootServer()">🔌 Перезагрузить сервер</button></div></div></div>
+</main><div id="toasts"></div>
+<script>
+var selectedProxies=[];
+function showTab(n,b){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});document.getElementById(n).classList.add('active');document.querySelectorAll('.tab-btn').forEach(function(x){x.classList.remove('active')});if(b)b.classList.add('active');if(n==='proxies')loadProxies();if(n==='dashboard')loadDashboard();if(n==='system')loadSystem();if(n==='sitetest')loadProxySelect();if(n==='settings')loadSettings()}
+function api(u,m,b,c){m=m||'GET';var x=new XMLHttpRequest();x.open(m,u,true);x.setRequestHeader('Content-Type','application/json');x.onload=function(){c(x.status===200?JSON.parse(x.responseText):{})};x.onerror=function(){c({})};x.send(b?JSON.stringify(b):null)}
+function toast(m,t){t=t||'success';var d=document.createElement('div');d.className='toast '+t;d.textContent=m;document.getElementById('toasts').appendChild(d);setTimeout(function(){d.remove()},3000)}
+function copyText(t){var i=document.createElement('textarea');i.value=t;i.style.position='fixed';i.style.opacity='0';document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);toast('Скопировано!')}
+function loadDashboard(){api('/api/system-info','GET',null,function(d){document.getElementById('dashStats').innerHTML='<div class="stat-card"><div class="stat-icon">🌐</div><div class="stat-value">'+(d.proxy_stats?d.proxy_stats.active:0)+'</div><div class="stat-label">Активных</div></div><div class="stat-card"><div class="stat-icon">🔌</div><div class="stat-value">'+(d.proxy_stats?d.proxy_stats.ports_available:0)+'</div><div class="stat-label">Портов</div></div><div class="stat-card"><div class="stat-icon">🖥️</div><div class="stat-value">'+(d.cpu?d.cpu.percent:0)+'%</div><div class="stat-label">CPU</div></div><div class="stat-card"><div class="stat-icon">💾</div><div class="stat-value">'+(d.memory?d.memory.percent:0)+'%</div><div class="stat-label">RAM</div></div>';document.getElementById('cpuBar').style.width=(d.cpu?d.cpu.percent:0)+'%';document.getElementById('cpuValue').textContent=(d.cpu?d.cpu.percent:0)+'%';document.getElementById('ramBar').style.width=(d.memory?d.memory.percent:0)+'%';document.getElementById('ramValue').textContent=(d.memory?d.memory.percent:0)+'%';document.getElementById('proxyStatsDash').innerHTML='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center"><div><div style="font-size:24px;color:#00c853">'+(d.proxy_stats?d.proxy_stats.active:0)+'</div><div style="font-size:11px;color:var(--text2)">Активные</div></div><div><div style="font-size:24px;color:#ffa726">'+(d.proxy_stats?d.proxy_stats.total:0)+'</div><div style="font-size:11px;color:var(--text2)">Всего</div></div><div><div style="font-size:24px;color:#448aff">'+(d.proxy_stats?d.proxy_stats.ports_available:0)+'</div><div style="font-size:11px;color:var(--text2)">Свободно</div></div></div>'})}
+function loadProxies(){api('/api/proxies','GET',null,function(d){var l=document.getElementById('proxyList');if(!d.proxies||d.proxies.length===0){l.innerHTML='<div style="text-align:center;padding:40px;color:#666"><h3>Нет прокси</h3></div>';return}var h='';for(var i=0;i<d.proxies.length;i++){var p=d.proxies[i];var s=selectedProxies.indexOf(p.id)>=0?' selected':'';var sc=p.port_open?'var(--green)':'var(--red)';var st=p.port_open?'Открыт':'Закрыт';h+='<div class="proxy-card'+s+'" onclick="selectProxy(\''+p.id+'\')"><div style="position:absolute;top:12px;right:12px"><span style="color:'+sc+';font-weight:bold">● '+st+'</span></div><div style="font-weight:bold;margin-bottom:8px">Порт '+p.port+' | '+p.username+':'+p.password+'</div><div class="proxy-format">'+(p.connection_format||'')+'</div><button class="copy-btn" onclick="event.stopPropagation();copyText(\''+(p.connection_format||'')+'\')">📋 Копировать</button></div>'}l.innerHTML=h;document.getElementById('delBtn').style.display=selectedProxies.length>0?'inline-block':'none';document.getElementById('rotateBtn').style.display=selectedProxies.length>0?'inline-block':'none'})}
+function selectProxy(id){var i=selectedProxies.indexOf(id);if(i>=0)selectedProxies.splice(i,1);else selectedProxies.push(id);loadProxies()}
+function deleteSelected(){if(selectedProxies.length===0)return;if(!confirm('Удалить?'))return;api('/api/proxy/delete','POST',{ids:selectedProxies},function(){selectedProxies=[];toast('Удалено');loadProxies();loadDashboard()})}
+function rotateSelected(){if(selectedProxies.length===0)return;api('/api/proxy/rotate','POST',{ids:selectedProxies},function(){toast('Ротировано');loadProxies()})}
+function createProxies(){var c=parseInt(document.getElementById('count').value)||1;api('/api/proxy/create','POST',{count:c,username:document.getElementById('username').value,password:document.getElementById('password').value},function(d){if(d.error){toast(d.error,'error');return}var h='<div class="card" style="margin-top:15px"><h3 style="color:#00c853">✅ Создано '+c+'</h3>';for(var i=0;i<d.proxies.length;i++){var f=d.proxies[i].connection_format;h+='<div style="background:#1a1a24;padding:12px;margin:8px 0;border-radius:8px"><div style="font-family:monospace;color:#00ff88;text-align:center;margin-bottom:8px">'+f+'</div><button class="copy-btn" onclick="copyText(\''+f+'\')">📋 Копировать</button></div>'}h+='</div>';document.getElementById('results').innerHTML=h;toast('Создано '+c+' прокси');loadProxies();loadDashboard()})}
+function exportProxies(){api('/api/proxies','GET',null,function(d){if(!d.proxies||d.proxies.length===0){toast('Нет прокси','error');return}var t='';for(var i=0;i<d.proxies.length;i++)t+=d.proxies[i].connection_format+'\n';var b=new Blob([t],{type:'text/plain'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='proxies.txt';a.click();toast('Экспортировано')})}
+function checkAll(){document.getElementById('checkResults').innerHTML='<div style="text-align:center;padding:20px">⏳ Проверка...</div>';api('/api/proxy/check-all','GET',null,function(d){var h='<h3 style="color:#a29bfe;margin-bottom:10px">Результаты</h3>';h+='<div style="margin-bottom:10px">Всего: <b>'+d.total+'</b> | Открыто: <b style="color:#00c853">'+d.open+'</b> | Работает: <b style="color:#00c853">'+d.working+'</b></div>';h+='<table class="check-table"><tr><th>Порт</th><th>Порт</th><th>Интернет</th><th>IP</th></tr>';for(var i=0;i<d.results.length;i++){var r=d.results[i];var ps=r.open?'<span style="color:#00c853">✅ Открыт</span>':'<span style="color:#ff1744">❌ Закрыт</span>';var ins=!r.open?'<span style="color:#666">-</span>':(r.internet&&r.internet.status==='working'?'<span style="color:#00c853">✅ IPv6</span>':'<span style="color:#ff1744">❌ Нет</span>');var ip=(r.internet&&r.internet.ip)?'<span style="font-size:10px">'+r.internet.ip+'</span>':'-';h+='<tr><td><b>'+r.port+'</b></td><td>'+ps+'</td><td>'+ins+'</td><td>'+ip+'</td></tr>'}h+='</table>';document.getElementById('checkResults').innerHTML=h;toast('Проверено '+d.total+' прокси')})}
+function checkDuplicates(){api('/api/proxy/check-duplicates','GET',null,function(d){toast(d.duplicates>0?'Дубликатов: '+d.duplicates:'Дубликатов нет',d.duplicates>0?'error':'success')})}
+function loadProxySelect(){api('/api/proxies','GET',null,function(d){var s=document.getElementById('testProxy');s.innerHTML='';if(d.proxies)for(var i=0;i<d.proxies.length;i++){var p=d.proxies[i];s.innerHTML+='<option value="'+p.id+'">Порт '+p.port+' ('+p.username+':'+p.password+')</option>'}})}
+function testWebsite(){var pid=document.getElementById('testProxy').value;var url=document.getElementById('testUrl').value;document.getElementById('siteTestResult').innerHTML='<div style="text-align:center;padding:20px">⏳ Проверка '+url+'...</div>';api('/api/proxy/check-website','POST',{proxy_id:pid,url:url},function(d){if(d.error){document.getElementById('siteTestResult').innerHTML='<div style="color:#ff1744">❌ '+d.error+'</div>';return}var color=d.accessible?'#00c853':'#ff1744';var icon=d.accessible?'✅':'❌';document.getElementById('siteTestResult').innerHTML='<div style="background:#1a1a24;padding:15px;border-radius:8px"><div style="font-size:18px;color:'+color+';margin-bottom:10px">'+icon+' HTTP '+d.http_code+' - '+d.url+'</div><div style="color:var(--text2);font-size:12px">Прокси: '+d.proxy+' | IPv6: '+d.ipv6+'</div>'+(d.error?'<div style="color:#ff1744;font-size:12px">'+d.error+'</div>':'')+'</div>'})}
+function loadSystem(){api('/api/system-info','GET',null,function(d){var h='';h+='<div class="sys-card"><h3>🖥️ CPU</h3><div class="sys-value">'+(d.cpu?d.cpu.percent:0)+'%</div><div class="sys-detail">Ядер: '+(d.cpu?d.cpu.count:0)+' | Load: '+((d.system?d.system.load_avg:[0,0,0])[0])+'</div><div class="progress"><div class="progress-fill" style="width:'+(d.cpu?d.cpu.percent:0)+'%"></div></div></div>';h+='<div class="sys-card"><h3>💾 RAM</h3><div class="sys-value">'+(d.memory?d.memory.used:'0')+'/'+(d.memory?d.memory.total:'0')+' GB</div><div class="sys-detail">'+(d.memory?d.memory.percent:0)+'% | Swap: '+(d.swap?d.swap.used:'0')+' GB</div><div class="progress"><div class="progress-fill" style="width:'+(d.memory?d.memory.percent:0)+'%;background:linear-gradient(135deg,#00c853,#69f0ae)"></div></div></div>';h+='<div class="sys-card"><h3>💿 Диски</h3>';for(var i=0;i<(d.disks||[]).length;i++)h+='<div class="sys-detail"><b>'+d.disks[i].mountpoint+'</b>: '+d.disks[i].used+'/'+d.disks[i].total+' GB ('+d.disks[i].percent+'%)</div>';h+='</div>';h+='<div class="sys-card"><h3>🌐 Сеть</h3><div class="sys-detail">Внешний: '+d.network_config.external_ipv4+'</div><div class="sys-detail">Локальный: '+d.network_config.local_ipv4+'</div><div class="sys-detail">IPv6 подсеть: '+d.network_config.ipv6_subnet+'</div><div class="sys-detail">TX: '+(d.network?d.network.sent:'0')+' MB | RX: '+(d.network?d.network.recv:'0')+' MB</div></div>';h+='<div class="sys-card"><h3>📊 Система</h3><div class="sys-detail">Хост: '+d.system.hostname+'</div><div class="sys-detail">ОС: '+d.system.os+'</div><div class="sys-detail">Ядро: '+d.system.kernel+'</div><div class="sys-detail">Аптайм: '+d.system.uptime+'</div></div>';document.getElementById('sysInfo').innerHTML=h})}
+function restart3proxy(){if(!confirm('Перезапустить 3proxy?'))return;api('/api/server/restart-3proxy','POST',null,function(d){toast(d.message||'3proxy перезапущен')})}
+function rebootServer(){if(!confirm('⚠️ Перезагрузить сервер?'))return;api('/api/server/reboot','POST',null,function(d){toast(d.message||'Перезагрузка...','warning')})}
+function loadSettings(){api('/api/system-info','GET',null,function(d){document.getElementById('settingsInfo').innerHTML='Внешний IP: <b>'+d.network_config.external_ipv4+'</b><br>Локальный IP: <b>'+d.network_config.local_ipv4+'</b><br>IPv6 подсеть: <b>'+d.network_config.ipv6_subnet+'</b><br>Прокси: <b>'+(d.proxy_stats?d.proxy_stats.total:0)+'</b>'})}
+function changePassword(){var oldP=document.getElementById('oldPassword').value;var newP=document.getElementById('newPassword').value;if(!oldP||!newP){toast('Заполните оба поля','error');return}if(newP.length<6){toast('Минимум 6 символов','error');return}api('/api/settings/change-password','POST',{old_password:oldP,new_password:newP},function(d){if(d.error){toast(d.error,'error')}else{toast('✅ '+d.message);document.getElementById('oldPassword').value='';document.getElementById('newPassword').value=''}})}
+setInterval(function(){if(document.getElementById('dashboard').classList.contains('active'))loadDashboard()},10000);
+loadDashboard();
+</script></body></html>
+HTMLEOF
+
 echo "[6/6] Сервисы и запуск..."
+
 cat > /etc/systemd/system/3proxy.service << 'EOF'
 [Unit]
 Description=3proxy
@@ -551,11 +540,17 @@ sleep 3
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          УСТАНОВКА ЗАВЕРШЕНА! v13.0                     ║"
+echo "║          УСТАНОВКА ЗАВЕРШЕНА! v14.0                     ║"
 echo "║          http://$IPV4_LOCAL:2525                     ║"
 echo "║          Логин: admin / Пароль: $ADMIN_PASS             ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 INSTALLEOF
 
 chmod +x /root/proxy-farm3/install.sh
-echo "Готово! v13.0 - полный fix"
+echo ""
+echo "========================================="
+echo "  ГОТОВО! v14.0 - Всё включено"
+echo "  HTML создается при установке"
+echo "  Дашборд работает"
+echo "  Системная информация работает"
+echo "========================================="
