@@ -670,50 +670,305 @@ PYEOF
 echo "[5/6] Создание веб-интерфейса..."
 
 cat > /opt/proxy-farm/templates/login.html << 'HTMLEOF'
-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ProxyFarm Neo - Вход</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:linear-gradient(135deg,#0a0a0f,#1a1a2e);min-height:100vh;display:flex;align-items:center;justify-content:center}.login-box{background:rgba(30,30,46,0.95);padding:40px;border-radius:20px;box-shadow:0 10px 40px rgba(0,0,0,0.5);width:380px;max-width:90%;border:1px solid #333}h1{color:#a29bfe;text-align:center;margin-bottom:30px;font-size:28px}input{width:100%;padding:12px;margin:10px 0;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;font-size:16px}input:focus{outline:none;border-color:#6c5ce7}button{width:100%;padding:12px;background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;border-radius:8px;color:#fff;font-size:16px;cursor:pointer;margin-top:10px}button:hover{opacity:0.9}.error{background:rgba(255,0,0,0.1);color:#ff4444;padding:10px;border-radius:8px;margin-bottom:15px;text-align:center}</style></head>
-<body><div class="login-box"><h1>⚡ ProxyFarm Neo</h1>{% if error %}<div class="error">{{ error }}</div>{% endif %}<form method="POST"><input type="text" name="username" placeholder="Логин" required><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form></div></body></html>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ProxyFarm Neo — Вход</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;background:radial-gradient(ellipse at 30% 20%,rgba(139,92,246,0.15),transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(34,211,238,0.1),transparent 50%),#07070d;min-height:100vh;display:flex;align-items:center;justify-content:center;color:#ededf2;padding:20px}
+.box{width:400px;max-width:100%;background:rgba(22,22,34,0.7);backdrop-filter:blur(16px);padding:40px;border-radius:20px;border:1px solid rgba(139,92,246,0.15);box-shadow:0 24px 64px rgba(0,0,0,0.5);animation:fadeInUp .5s cubic-bezier(.22,1,.36,1)}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.logo{width:60px;height:60px;border-radius:16px;background:linear-gradient(135deg,#8b5cf6,#22d3ee);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 20px;box-shadow:0 12px 32px rgba(139,92,246,0.4);color:#fff}
+h1{font-size:24px;font-weight:700;text-align:center;letter-spacing:-0.01em;margin-bottom:6px}
+h1 span{background:linear-gradient(135deg,#a78bfa,#22d3ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{text-align:center;color:#5a5a72;font-size:12px;margin-bottom:28px;letter-spacing:0.03em}
+label{display:block;font-size:11px;font-weight:600;color:#8b8ba0;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:7px}
+input{width:100%;padding:13px 16px;margin-bottom:16px;background:rgba(12,12,20,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:11px;color:#fff;font-size:15px;font-family:inherit;transition:all .2s}
+input:focus{outline:none;border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,0.15)}
+button{width:100%;padding:13px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);border:none;border-radius:11px;color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;box-shadow:0 6px 20px rgba(139,92,246,0.35);margin-top:6px}
+button:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(139,92,246,0.5)}
+button:active{transform:translateY(0) scale(0.98)}
+.error{background:rgba(239,68,68,0.1);color:#fca5a5;padding:11px 14px;border-radius:10px;margin-bottom:16px;font-size:13px;border:1px solid rgba(239,68,68,0.25);text-align:center}
+</style>
+</head>
+<body>
+<div class="box">
+<div class="logo">&#9889;</div>
+<h1>ProxyFarm <span>Neo</span></h1>
+<div class="sub">IPv6 PROXY SERVER &middot; v15</div>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form method="POST">
+<label for="username">Логин</label>
+<input id="username" type="text" name="username" placeholder="admin" autocomplete="username" required autofocus>
+<label for="password">Пароль</label>
+<input id="password" type="password" name="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password" required>
+<button type="submit">Войти &rarr;</button>
+</form>
+</div>
+</body>
+</html>
 HTMLEOF
 
 cat > /opt/proxy-farm/templates/index.html << 'HTMLEOF'
-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ProxyFarm Neo v15</title>
-<style>:root{--bg:#0a0a0f;--card:#1e1e2e;--purple:#6c5ce7;--text:#e4e4f0;--text2:#9898b0;--green:#00c853;--red:#ff1744;--yellow:#ffa726}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}.tabs{display:flex;background:#13131a;padding:10px 20px;gap:5px;flex-wrap:wrap;border-bottom:1px solid #2a2a3a;position:sticky;top:0;z-index:100}.tab-btn{padding:12px 20px;background:none;border:none;color:var(--text2);cursor:pointer;border-radius:8px;font-size:14px;transition:.2s;white-space:nowrap}.tab-btn:hover{background:#1a1a24;color:#fff}.tab-btn.active{background:linear-gradient(135deg,#6c5ce7,#4834d4);color:#fff}.logo-tab{background:linear-gradient(135deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold;font-size:16px;margin-right:15px}.main{padding:20px;max-width:1400px;margin:0 auto}.dashboard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px;margin-bottom:20px}.stat-card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a;transition:.3s}.stat-card:hover{border-color:var(--purple);transform:translateY(-2px)}.stat-icon{font-size:32px;margin-bottom:10px}.stat-value{font-size:32px;font-weight:bold;color:#a29bfe}.stat-label{color:var(--text2);font-size:13px;margin-top:5px}.stat-sub{color:var(--text2);font-size:11px;margin-top:3px}.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:20px}.card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a}.card h3{color:#a29bfe;margin-bottom:15px;font-size:18px}.btn{padding:8px 16px;border:none;border-radius:8px;font-size:13px;margin:3px;cursor:pointer;color:#fff;background:linear-gradient(135deg,#6c5ce7,#a29bfe);transition:.2s}.btn:hover{opacity:0.9;transform:translateY(-1px)}.btn-danger{background:linear-gradient(135deg,#ff1744,#ff5252)}.btn-success{background:linear-gradient(135deg,#00c853,#69f0ae)}.btn-warning{background:linear-gradient(135deg,#ffa726,#ffcc80)}.proxy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:15px}.proxy-card{background:var(--card);padding:20px;border-radius:12px;border:1px solid #2a2a3a;position:relative;transition:.2s;cursor:pointer}.proxy-card:hover{border-color:var(--purple)}.proxy-card.selected{border-color:#a29bfe;box-shadow:0 0 15px rgba(108,92,231,0.3)}.proxy-format{background:#1a1a24;padding:12px;border-radius:8px;font-family:monospace;font-size:12px;color:#00ff88;text-align:center;word-break:break-all;margin:10px 0}.copy-btn{display:block;width:100%;padding:10px;background:#6c5ce7;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;text-align:center}.copy-btn:hover{background:#4834d4}.section{display:none}.section.active{display:block}.form-input{width:100%;padding:12px;margin:8px 0;background:#181825;border:1px solid #2a2a3a;border-radius:8px;color:#fff;font-size:14px}.form-input:focus{outline:none;border-color:#6c5ce7}.form-label{color:var(--text2);font-size:11px;display:block;margin-bottom:5px;text-transform:uppercase}select.form-input{appearance:auto}.sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:15px}.sys-card{background:var(--card);padding:18px;border-radius:12px;border:1px solid #2a2a3a}.sys-card h3{color:#a29bfe;margin-bottom:10px}.sys-value{font-size:28px;color:#fff;margin:5px 0}.sys-detail{color:var(--text2);font-size:12px;margin:3px 0}.progress{background:#1a1a24;height:8px;border-radius:4px;margin-top:8px}.progress-fill{background:linear-gradient(135deg,#6c5ce7,#a29bfe);height:100%;border-radius:4px;transition:width 0.5s}.check-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}.check-table th,.check-table td{padding:10px;text-align:left;border-bottom:1px solid #2a2a3a}.check-table th{color:var(--text2)}.toast{position:fixed;top:20px;right:20px;background:var(--card);padding:15px 20px;border-radius:8px;z-index:9999;animation:slideIn .3s}.toast.success{border-left:4px solid var(--green)}.toast.error{border-left:4px solid var(--red)}@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}@media(max-width:768px){.tabs{padding:10px;gap:3px}.tab-btn{padding:8px 12px;font-size:11px}.main{padding:10px}.dashboard-grid{grid-template-columns:repeat(2,1fr);gap:8px}.stat-value{font-size:24px}.proxy-grid,.sys-grid{grid-template-columns:1fr}.row{grid-template-columns:1fr}}</style></head>
-<body><div class="tabs"><span class="logo-tab">⚡ ProxyFarm Neo v15</span><button class="tab-btn active" onclick="showTab('dashboard',this)">📊 Дашборд</button><button class="tab-btn" onclick="showTab('proxies',this)">🌐 Прокси</button><button class="tab-btn" onclick="showTab('create',this)">✨ Создать</button><button class="tab-btn" onclick="showTab('checker',this)">🔍 Проверка</button><button class="tab-btn" onclick="showTab('sitetest',this)">🌍 Тест сайтов</button><button class="tab-btn" onclick="showTab('system',this)">🖥️ Система</button><button class="tab-btn" onclick="showTab('settings',this)">⚙️ Настройки</button><button class="tab-btn" onclick="showTab('tools',this)">🔧 Инструменты</button><button class="tab-btn" onclick="window.location.href='/logout'" style="margin-left:auto">🚪 Выйти</button></div>
-<main class="main">
-<div class="section active" id="dashboard"><div class="dashboard-grid" id="dashStats"></div><div class="row"><div class="card"><h3>📈 CPU</h3><div class="progress" style="height:20px"><div class="progress-fill" id="cpuBar" style="width:0%"></div></div><div style="text-align:center;margin-top:5px;font-size:24px;color:#a29bfe" id="cpuValue">0%</div></div><div class="card"><h3>💾 RAM</h3><div class="progress" style="height:20px"><div class="progress-fill" id="ramBar" style="width:0%;background:linear-gradient(135deg,#00c853,#69f0ae)"></div></div><div style="text-align:center;margin-top:5px;font-size:24px;color:#69f0ae" id="ramValue">0%</div></div></div><div class="row"><div class="card"><h3>🌐 Прокси</h3><div id="proxyStatsDash"></div></div><div class="card"><h3>⚡ Действия</h3><button class="btn btn-warning" onclick="restart3proxy()">🔄 3proxy</button><button class="btn btn-danger" onclick="rebootServer()">🔌 Reboot</button></div></div></div>
-<div class="section" id="proxies"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px"><h2 style="color:#a29bfe">Список прокси</h2><div><button class="btn btn-success" onclick="exportProxies()">📥 Экспорт</button><button class="btn" onclick="checkDuplicates()">🔍 Дубликаты</button><button class="btn" onclick="rotateSelected()" id="rotateBtn" style="display:none">🔄 Ротировать</button><button class="btn btn-danger" onclick="deleteSelected()" id="delBtn" style="display:none">🗑️ Удалить</button></div></div><div class="proxy-grid" id="proxyList"></div></div>
-<div class="section" id="create"><h2 style="color:#a29bfe;margin-bottom:15px">Создание прокси</h2><div class="card"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px"><div><label class="form-label">Количество</label><input type="number" class="form-input" id="count" value="1" min="1" max="100"></div><div><label class="form-label">Логин (пусто=авто)</label><input type="text" class="form-input" id="username" placeholder="Авто"></div><div><label class="form-label">Пароль (пусто=авто)</label><input type="text" class="form-input" id="password" placeholder="Авто"></div></div><button class="btn" onclick="createProxies()" style="width:100%;margin-top:15px;padding:14px;font-size:16px">✨ Создать прокси</button></div><div id="results"></div></div>
-<div class="section" id="checker"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px"><h2 style="color:#a29bfe">Проверка прокси</h2><button class="btn" onclick="checkAll()">🔍 Проверить всё</button></div><div class="card"><div id="checkResults">Нажмите "Проверить всё"</div></div></div>
-<div class="section" id="sitetest"><h2 style="color:#a29bfe;margin-bottom:15px">🌍 Тест сайтов через прокси</h2><div class="card"><div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;align-items:end"><div><label class="form-label">Прокси</label><select class="form-input" id="testProxy"></select></div><div><label class="form-label">URL</label><input type="text" class="form-input" id="testUrl" value="ipv6.google.com"></div><div><button class="btn btn-success" onclick="testWebsite()" style="width:100%">🔍 Проверить</button></div></div><div id="siteTestResult" style="margin-top:15px"></div></div></div>
-<div class="section" id="system"><h2 style="color:#a29bfe;margin-bottom:15px">Системная информация</h2><div class="sys-grid" id="sysInfo"></div></div>
-<div class="section" id="settings"><h2 style="color:#a29bfe;margin-bottom:15px">⚙️ Настройки</h2><div class="row"><div class="card"><h3>🔑 Сменить пароль</h3><div style="margin:15px 0"><label class="form-label">Текущий пароль</label><input type="password" class="form-input" id="oldPassword" placeholder="Текущий пароль"></div><div style="margin:15px 0"><label class="form-label">Новый пароль</label><input type="password" class="form-input" id="newPassword" placeholder="Новый пароль (мин. 6 символов)"></div><button class="btn btn-warning" onclick="changePassword()" style="width:100%">🔑 Сменить пароль</button></div><div class="card"><h3>📋 Информация</h3><div id="settingsInfo" style="color:var(--text2);font-size:13px">Загрузка...</div></div></div></div>
-<div class="section" id="tools"><h2 style="color:#a29bfe;margin-bottom:15px">Инструменты</h2><div class="row"><div class="card"><h3>🔧 Управление</h3><button class="btn btn-warning" onclick="restart3proxy()">🔄 Перезапустить 3proxy</button><button class="btn btn-danger" onclick="rebootServer()">🔌 Перезагрузить сервер</button></div></div></div>
-</main><div id="toasts"></div>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProxyFarm Neo</title>
+<style>
+:root{--bg:#07070d;--bg-2:#0e0e18;--card:rgba(22,22,34,0.7);--border:rgba(139,92,246,0.12);--border-h:rgba(139,92,246,0.45);--accent:#8b5cf6;--accent-2:#a78bfa;--accent-3:#22d3ee;--text:#ededf2;--text-dim:#8b8ba0;--text-mute:#5a5a72;--success:#10b981;--success-g:rgba(16,185,129,0.4);--danger:#ef4444;--danger-g:rgba(239,68,68,0.4);--warning:#f59e0b;--radius:14px}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;background:radial-gradient(ellipse at 15% 10%,rgba(139,92,246,0.10),transparent 45%),radial-gradient(ellipse at 85% 85%,rgba(34,211,238,0.08),transparent 45%),var(--bg);color:var(--text);min-height:100vh;line-height:1.5;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(139,92,246,0.3);border-radius:5px}
+::-webkit-scrollbar-thumb:hover{background:rgba(139,92,246,0.5)}
+.topbar{position:sticky;top:0;z-index:100;display:flex;justify-content:space-between;align-items:center;padding:14px 28px;background:rgba(7,7,13,0.85);backdrop-filter:blur(14px);border-bottom:1px solid rgba(255,255,255,0.05)}
+.brand{display:flex;align-items:center;gap:12px}
+.brand-icon{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#8b5cf6,#22d3ee);display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 8px 24px rgba(139,92,246,0.35);color:#fff}
+.brand-title{font-size:17px;font-weight:700;letter-spacing:-0.01em}
+.brand-title span{background:linear-gradient(135deg,#a78bfa,#22d3ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.brand-sub{font-size:11px;color:var(--text-mute);margin-top:1px;letter-spacing:0.02em}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.status-pill{display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:20px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);font-size:12px;color:#a7f3d0}
+.status-pill.offline{background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.25);color:#fca5a5}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 10px var(--success-g);animation:pulse 2s ease-in-out infinite}
+.status-pill.offline .status-dot{background:var(--danger);box-shadow:0 0 10px var(--danger-g)}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.85)}}
+.icon-btn{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.04);color:var(--text-dim);border:1px solid rgba(255,255,255,0.06);text-decoration:none;font-size:16px;transition:all .2s}
+.icon-btn:hover{background:rgba(239,68,68,0.15);color:#fca5a5;border-color:rgba(239,68,68,0.35)}
+.tabs{position:sticky;top:69px;z-index:99;display:flex;flex-wrap:wrap;gap:4px;padding:10px 28px;background:rgba(7,7,13,0.75);backdrop-filter:blur(14px);border-bottom:1px solid rgba(255,255,255,0.05)}
+.tabs::-webkit-scrollbar{display:none}
+.tab-btn{display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;background:transparent;border:1px solid transparent;color:var(--text-dim);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .2s;font-family:inherit}
+.tab-btn:hover{color:var(--text);background:rgba(255,255,255,0.04)}
+.tab-btn.active{background:linear-gradient(135deg,rgba(139,92,246,0.2),rgba(34,211,238,0.1));color:#fff;border-color:rgba(139,92,246,0.4);box-shadow:0 4px 16px rgba(139,92,246,0.15)}
+.tab-icon{font-size:14px}
+main{max-width:1400px;margin:0 auto;padding:28px 28px 60px}
+.section{display:none}
+.section.active{display:block;animation:fadeInUp .35s cubic-bezier(.22,1,.36,1)}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+h2{font-size:20px;font-weight:700;letter-spacing:-0.01em;margin-bottom:18px;display:flex;align-items:center;gap:9px}
+h2 .icon-circle{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,0.25),rgba(34,211,238,0.15));display:inline-flex;align-items:center;justify-content:center;font-size:15px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;backdrop-filter:blur(10px);transition:all .25s}
+.card:hover{border-color:rgba(139,92,246,0.3)}
+.card h3{font-size:14px;font-weight:600;color:var(--text-dim);margin-bottom:14px;text-transform:uppercase;letter-spacing:0.06em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:18px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;margin-bottom:18px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;position:relative;overflow:hidden;transition:all .25s}
+.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent-3));opacity:0;transition:opacity .25s}
+.stat:hover{transform:translateY(-2px);border-color:var(--border-h);box-shadow:0 12px 32px rgba(0,0,0,0.3)}
+.stat:hover::before{opacity:1}
+.stat-icon{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,rgba(139,92,246,0.2),rgba(34,211,238,0.1));display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:12px}
+.stat-value{font-size:30px;font-weight:700;letter-spacing:-0.02em;color:#fff}
+.stat-label{font-size:12px;color:var(--text-dim);margin-top:3px}
+.ring-wrap{display:flex;align-items:center;gap:18px}
+.ring{width:88px;height:88px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--p)*1%),rgba(255,255,255,0.05) 0);display:flex;align-items:center;justify-content:center;position:relative;transition:background .6s}
+.ring::before{content:'';position:absolute;inset:8px;border-radius:50%;background:var(--bg-2)}
+.ring-label{position:relative;font-size:19px;font-weight:700;color:#fff;z-index:1}
+.ring.ram{background:conic-gradient(var(--success) calc(var(--p)*1%),rgba(255,255,255,0.05) 0)}
+.ring-info{flex:1}
+.ring-info .big{font-size:20px;font-weight:600;color:#fff}
+.ring-info .small{font-size:12px;color:var(--text-dim);margin-top:3px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 16px;border-radius:10px;border:none;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;color:#fff;transition:all .15s;background:linear-gradient(135deg,#8b5cf6,#7c3aed);box-shadow:0 4px 14px rgba(139,92,246,0.25)}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(139,92,246,0.4)}
+.btn:active{transform:translateY(0) scale(0.98)}
+.btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-danger{background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 14px rgba(239,68,68,0.25)}
+.btn-danger:hover{box-shadow:0 6px 20px rgba(239,68,68,0.4)}
+.btn-success{background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 4px 14px rgba(16,185,129,0.25)}
+.btn-success:hover{box-shadow:0 6px 20px rgba(16,185,129,0.4)}
+.btn-warning{background:linear-gradient(135deg,#f59e0b,#d97706);box-shadow:0 4px 14px rgba(245,158,11,0.25)}
+.btn-ghost{background:rgba(255,255,255,0.04);color:var(--text-dim);border:1px solid rgba(255,255,255,0.08);box-shadow:none}
+.btn-ghost:hover{background:rgba(255,255,255,0.08);color:var(--text);transform:translateY(-1px);box-shadow:none}
+.btn-sm{padding:7px 12px;font-size:12px}
+.form-label{display:block;font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:7px}
+.form-input{width:100%;padding:11px 14px;background:rgba(12,12,20,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:10px;color:#fff;font-size:14px;font-family:inherit;transition:all .2s}
+.form-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(139,92,246,0.15)}
+select.form-input{cursor:pointer}
+.create-fields{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.site-fields{display:grid;grid-template-columns:1fr 2fr 1fr;gap:12px;align-items:end}
+.proxy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.proxy-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;position:relative;cursor:pointer;transition:all .2s}
+.proxy-card:hover{border-color:var(--border-h);transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,0.3)}
+.proxy-card.selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(139,92,246,0.3),0 12px 32px rgba(139,92,246,0.15)}
+.proxy-status{position:absolute;top:16px;right:16px;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px}
+.proxy-status.open{color:#6ee7b7;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.25)}
+.proxy-status.closed{color:#fca5a5;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25)}
+.proxy-status .dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor;animation:pulse 2s ease-in-out infinite}
+.proxy-meta{font-size:13px;color:var(--text);margin-bottom:10px;padding-right:74px}
+.proxy-meta b{color:#fff}
+.proxy-fmt{background:rgba(6,6,12,0.7);border:1px solid rgba(255,255,255,0.05);padding:11px;border-radius:9px;font-family:'JetBrains Mono','Consolas',monospace;font-size:11.5px;color:#22d3ee;text-align:center;word-break:break-all;margin-bottom:10px}
+.copy-btn{width:100%;padding:9px;background:rgba(139,92,246,0.12);color:#a78bfa;border:1px solid rgba(139,92,246,0.25);border-radius:9px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.copy-btn:hover{background:rgba(139,92,246,0.22);border-color:var(--accent);color:#fff}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;margin-top:14px}
+.tbl th,.tbl td{padding:11px 14px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.05)}
+.tbl th{color:var(--text-dim);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em}
+.tbl tr:hover td{background:rgba(139,92,246,0.03)}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-ok{color:#6ee7b7;background:rgba(16,185,129,0.12)}
+.badge-err{color:#fca5a5;background:rgba(239,68,68,0.1)}
+.badge-wait{color:#fcd34d;background:rgba(245,158,11,0.1)}
+.empty{text-align:center;padding:60px 20px;color:var(--text-mute)}
+.empty-icon{font-size:48px;opacity:0.4;margin-bottom:14px}
+.empty-title{font-size:16px;color:var(--text-dim);margin-bottom:6px}
+.empty-sub{font-size:13px}
+.toasts{position:fixed;top:84px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.toast{display:flex;align-items:center;gap:11px;padding:13px 18px;border-radius:12px;background:rgba(22,22,34,0.95);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,0.08);font-size:13px;color:var(--text);min-width:220px;max-width:380px;box-shadow:0 8px 32px rgba(0,0,0,0.5);animation:slideIn .35s cubic-bezier(.22,1,.36,1);pointer-events:auto}
+.toast.success{border-left:3px solid var(--success)}
+.toast.error{border-left:3px solid var(--danger)}
+.toast.info{border-left:3px solid var(--accent-3)}
+.toast.warning{border-left:3px solid var(--warning)}
+.toast-icon{font-size:17px}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+.toast.leaving{animation:slideOut .3s forwards}
+@keyframes slideOut{to{transform:translateX(120%);opacity:0}}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-block{display:flex;align-items:center;justify-content:center;gap:10px;padding:40px 20px;color:var(--text-dim);font-size:14px}
+.sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+@media(max-width:900px){.topbar{padding:12px 16px}.brand-sub{display:none}.tabs{padding:8px 16px;top:65px}.tab-btn{padding:8px 12px;font-size:12px}main{padding:18px 16px 40px}.grid{grid-template-columns:repeat(2,1fr);gap:10px}.row{grid-template-columns:1fr}.proxy-grid{grid-template-columns:1fr}.stat-value{font-size:24px}.stat{padding:15px}.stat-icon{width:36px;height:36px;font-size:17px;margin-bottom:9px}}
+@media(max-width:700px){.create-fields,.site-fields{grid-template-columns:1fr}}
+@media(max-width:520px){.grid{grid-template-columns:1fr}.ring{width:72px;height:72px}.ring::before{inset:6px}.ring-label{font-size:16px}}
+</style>
+</head>
+<body>
+<header class="topbar">
+<div class="brand">
+<div class="brand-icon">&#9889;</div>
+<div><div class="brand-title">ProxyFarm <span>Neo</span></div><div class="brand-sub">IPv6 Proxy Server &middot; v15</div></div>
+</div>
+<div class="topbar-right">
+<div class="status-pill" id="statusPill"><span class="status-dot"></span><span id="statusLabel">Онлайн</span></div>
+<a href="/logout" class="icon-btn" title="Выйти">&#9166;</a>
+</div>
+</header>
+<nav class="tabs">
+<button class="tab-btn active" data-tab="dashboard" onclick="showTab('dashboard',this)"><span class="tab-icon">&#128202;</span>Дашборд</button>
+<button class="tab-btn" data-tab="proxies" onclick="showTab('proxies',this)"><span class="tab-icon">&#127760;</span>Прокси</button>
+<button class="tab-btn" data-tab="create" onclick="showTab('create',this)"><span class="tab-icon">&#10024;</span>Создать</button>
+<button class="tab-btn" data-tab="checker" onclick="showTab('checker',this)"><span class="tab-icon">&#128269;</span>Проверка</button>
+<button class="tab-btn" data-tab="sitetest" onclick="showTab('sitetest',this)"><span class="tab-icon">&#127757;</span>Тест сайтов</button>
+<button class="tab-btn" data-tab="system" onclick="showTab('system',this)"><span class="tab-icon">&#128421;</span>Система</button>
+<button class="tab-btn" data-tab="settings" onclick="showTab('settings',this)"><span class="tab-icon">&#9881;</span>Настройки</button>
+<button class="tab-btn" data-tab="tools" onclick="showTab('tools',this)"><span class="tab-icon">&#128295;</span>Инструменты</button>
+</nav>
+<main>
+<section id="dashboard" class="section active">
+<div class="grid" id="dashStats">
+<div class="stat"><div class="stat-icon">&#9889;</div><div class="stat-value">&mdash;</div><div class="stat-label">Активных прокси</div></div>
+<div class="stat"><div class="stat-icon">&#128268;</div><div class="stat-value">&mdash;</div><div class="stat-label">Свободных портов</div></div>
+<div class="stat"><div class="stat-icon">&#128421;</div><div class="stat-value">&mdash;</div><div class="stat-label">CPU</div></div>
+<div class="stat"><div class="stat-icon">&#128190;</div><div class="stat-value">&mdash;</div><div class="stat-label">RAM</div></div>
+</div>
+<div class="row">
+<div class="card"><h3>CPU</h3><div class="ring-wrap"><div class="ring" id="cpuRing" style="--p:0"><div class="ring-label" id="cpuRingLabel">0%</div></div><div class="ring-info"><div class="big" id="cpuBig">0%</div><div class="small" id="cpuSmall">Ядра: &mdash;</div></div></div></div>
+<div class="card"><h3>Память</h3><div class="ring-wrap"><div class="ring ram" id="ramRing" style="--p:0"><div class="ring-label" id="ramRingLabel">0%</div></div><div class="ring-info"><div class="big" id="ramBig">0 GB</div><div class="small" id="ramSmall">из &mdash; GB</div></div></div></div>
+<div class="card"><h3>Прокси</h3><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center"><div><div style="font-size:26px;font-weight:700;color:#10b981" id="pActive">0</div><div style="font-size:11px;color:var(--text-dim);margin-top:3px">Активные</div></div><div><div style="font-size:26px;font-weight:700;color:#f59e0b" id="pTotal">0</div><div style="font-size:11px;color:var(--text-dim);margin-top:3px">Всего</div></div><div><div style="font-size:26px;font-weight:700;color:#22d3ee" id="pFree">0</div><div style="font-size:11px;color:var(--text-dim);margin-top:3px">Свободно</div></div></div></div>
+<div class="card"><h3>Быстрые действия</h3><div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn btn-warning btn-sm" onclick="restart3proxy()">&#128260; Перезапустить</button><button class="btn btn-ghost btn-sm" onclick="showTab('create',document.querySelector('[data-tab=create]'))">&#10024; Создать</button><button class="btn btn-ghost btn-sm" onclick="showTab('checker',document.querySelector('[data-tab=checker]'))">&#128269; Проверить</button><button class="btn btn-ghost btn-sm" onclick="showTab('tools',document.querySelector('[data-tab=tools]'))">&#128295; Инструменты</button></div></div>
+</div>
+</section>
+<section id="proxies" class="section">
+<h2><span class="icon-circle">&#127760;</span> Список прокси</h2>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+<div id="selectedInfo" style="font-size:13px;color:var(--text-dim)"></div>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<button class="btn btn-ghost btn-sm" id="selectAllBtn" onclick="toggleSelectAll()">Выбрать все</button>
+<button class="btn btn-ghost btn-sm" onclick="checkDuplicates()">&#128270; Дубликаты</button>
+<button class="btn btn-success btn-sm" onclick="exportProxies()">&#128229; Экспорт</button>
+<button class="btn btn-warning btn-sm" id="rotateBtn" style="display:none" onclick="rotateSelected()">&#128260; Ротировать</button>
+<button class="btn btn-danger btn-sm" id="delBtn" style="display:none" onclick="deleteSelected()">&#128465; Удалить</button>
+</div></div>
+<div class="proxy-grid" id="proxyList"></div>
+</section>
+<section id="create" class="section">
+<h2><span class="icon-circle">&#10024;</span> Создание прокси</h2>
+<div class="card">
+<div class="create-fields">
+<div><label class="form-label">Количество</label><input type="number" class="form-input" id="count" value="1" min="1" max="100"></div>
+<div><label class="form-label">Логин (пусто = авто)</label><input type="text" class="form-input" id="username" placeholder="Авто"></div>
+<div><label class="form-label">Пароль (пусто = авто)</label><input type="text" class="form-input" id="password" placeholder="Авто"></div>
+</div>
+<button class="btn" style="width:100%;margin-top:16px;padding:13px" onclick="createProxies(this)">&#10024; Создать прокси</button>
+</div>
+<div id="results" style="margin-top:16px"></div>
+</section>
+<section id="checker" class="section">
+<h2><span class="icon-circle">&#128269;</span> Проверка прокси</h2>
+<div style="margin-bottom:14px"><button class="btn btn-success" onclick="checkAll(this)">&#128269; Проверить всё</button></div>
+<div class="card"><div id="checkResults"><div class="empty"><div class="empty-icon">&#128269;</div><div class="empty-title">Пока нет результатов</div><div class="empty-sub">Нажмите «Проверить всё», чтобы протестировать каждый прокси</div></div></div></div>
+</section>
+<section id="sitetest" class="section">
+<h2><span class="icon-circle">&#127757;</span> Тест сайтов через прокси</h2>
+<div class="card">
+<div class="site-fields">
+<div><label class="form-label">Прокси</label><select class="form-input" id="testProxy"></select></div>
+<div><label class="form-label">URL</label><input type="text" class="form-input" id="testUrl" value="ipv6.google.com"></div>
+<div><button class="btn btn-success" style="width:100%" onclick="testWebsite(this)">Проверить</button></div>
+</div>
+<div id="siteTestResult" style="margin-top:16px"></div>
+</div>
+</section>
+<section id="system" class="section">
+<h2><span class="icon-circle">&#128421;</span> Системная информация</h2>
+<div id="sysInfo" class="sys-grid"></div>
+</section>
+<section id="settings" class="section">
+<h2><span class="icon-circle">&#9881;</span> Настройки</h2>
+<div class="row">
+<div class="card"><h3>&#128273; Смена пароля</h3><div style="margin:14px 0"><label class="form-label">Текущий пароль</label><input type="password" class="form-input" id="oldPassword" placeholder="Текущий пароль"></div><div style="margin:14px 0"><label class="form-label">Новый пароль (мин. 6)</label><input type="password" class="form-input" id="newPassword" placeholder="Новый пароль"></div><button class="btn btn-warning" style="width:100%" onclick="changePassword()">Сменить пароль</button></div>
+<div class="card"><h3>&#128203; Информация</h3><div id="settingsInfo" style="color:var(--text-dim);font-size:13px;line-height:1.9">Загрузка...</div></div>
+</div>
+</section>
+<section id="tools" class="section">
+<h2><span class="icon-circle">&#128295;</span> Инструменты</h2>
+<div class="row">
+<div class="card"><h3>&#9881; Управление</h3><div style="display:flex;flex-direction:column;gap:10px"><button class="btn btn-warning" style="width:100%" onclick="restart3proxy()">&#128260; Перезапустить 3proxy</button><button class="btn btn-danger" style="width:100%" onclick="rebootServer()">&#128268; Перезагрузить сервер</button></div></div>
+<div class="card"><h3>&#128161; Подсказки</h3><div style="color:var(--text-dim);font-size:13px;line-height:1.8">&bull; <b style="color:#a78bfa">Перезапустить 3proxy</b> — пересобрать конфиг и перезапустить прокси.<br>&bull; <b style="color:#a78bfa">Перезагрузить сервер</b> — перезагрузка ОС примерно через 3 секунды.<br>&bull; IPv6-адреса и конфиг восстанавливаются автоматически при старте сервиса.</div></div>
+</div>
+</section>
+</main>
+<div class="toasts" id="toasts"></div>
 <script>
-var selectedProxies=[];
-function showTab(n,b){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});document.getElementById(n).classList.add('active');document.querySelectorAll('.tab-btn').forEach(function(x){x.classList.remove('active')});if(b)b.classList.add('active');if(n==='proxies')loadProxies();if(n==='dashboard')loadDashboard();if(n==='system')loadSystem();if(n==='sitetest')loadProxySelect();if(n==='settings')loadSettings()}
-function api(u,m,b,c){m=m||'GET';var x=new XMLHttpRequest();x.open(m,u,true);x.setRequestHeader('Content-Type','application/json');x.onload=function(){c(x.status===200?JSON.parse(x.responseText):{})};x.onerror=function(){c({})};x.send(b?JSON.stringify(b):null)}
-function toast(m,t){t=t||'success';var d=document.createElement('div');d.className='toast '+t;d.textContent=m;document.getElementById('toasts').appendChild(d);setTimeout(function(){d.remove()},3000)}
-function copyText(t){var i=document.createElement('textarea');i.value=t;i.style.position='fixed';i.style.opacity='0';document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);toast('Скопировано!')}
-function loadDashboard(){api('/api/system-info','GET',null,function(d){document.getElementById('dashStats').innerHTML='<div class="stat-card"><div class="stat-icon">🌐</div><div class="stat-value">'+(d.proxy_stats?d.proxy_stats.active:0)+'</div><div class="stat-label">Активных</div></div><div class="stat-card"><div class="stat-icon">🔌</div><div class="stat-value">'+(d.proxy_stats?d.proxy_stats.ports_available:0)+'</div><div class="stat-label">Портов</div></div><div class="stat-card"><div class="stat-icon">🖥️</div><div class="stat-value">'+(d.cpu?d.cpu.percent:0)+'%</div><div class="stat-label">CPU</div></div><div class="stat-card"><div class="stat-icon">💾</div><div class="stat-value">'+(d.memory?d.memory.percent:0)+'%</div><div class="stat-label">RAM</div></div>';document.getElementById('cpuBar').style.width=(d.cpu?d.cpu.percent:0)+'%';document.getElementById('cpuValue').textContent=(d.cpu?d.cpu.percent:0)+'%';document.getElementById('ramBar').style.width=(d.memory?d.memory.percent:0)+'%';document.getElementById('ramValue').textContent=(d.memory?d.memory.percent:0)+'%';document.getElementById('proxyStatsDash').innerHTML='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center"><div><div style="font-size:24px;color:#00c853">'+(d.proxy_stats?d.proxy_stats.active:0)+'</div><div style="font-size:11px;color:var(--text2)">Активные</div></div><div><div style="font-size:24px;color:#ffa726">'+(d.proxy_stats?d.proxy_stats.total:0)+'</div><div style="font-size:11px;color:var(--text2)">Всего</div></div><div><div style="font-size:24px;color:#448aff">'+(d.proxy_stats?d.proxy_stats.ports_available:0)+'</div><div style="font-size:11px;color:var(--text2)">Свободно</div></div></div>'})}
-function loadProxies(){api('/api/proxies','GET',null,function(d){var l=document.getElementById('proxyList');if(!d.proxies||d.proxies.length===0){l.innerHTML='<div style="text-align:center;padding:40px;color:#666"><h3>Нет прокси</h3></div>';return}var h='';for(var i=0;i<d.proxies.length;i++){var p=d.proxies[i];var s=selectedProxies.indexOf(p.id)>=0?' selected':'';var sc=p.port_open?'var(--green)':'var(--red)';var st=p.port_open?'Открыт':'Закрыт';h+='<div class="proxy-card'+s+'" onclick="selectProxy(\''+p.id+'\')"><div style="position:absolute;top:12px;right:12px"><span style="color:'+sc+';font-weight:bold">● '+st+'</span></div><div style="font-weight:bold;margin-bottom:8px">Порт '+p.port+' | '+p.username+':'+p.password+'</div><div class="proxy-format">'+(p.connection_format||'')+'</div><button class="copy-btn" onclick="event.stopPropagation();copyText(\''+(p.connection_format||'')+'\')">📋 Копировать</button></div>'}l.innerHTML=h;document.getElementById('delBtn').style.display=selectedProxies.length>0?'inline-block':'none';document.getElementById('rotateBtn').style.display=selectedProxies.length>0?'inline-block':'none'})}
+var selectedProxies=[],proxyCache={},allProxyIds=[];
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function safeId(v){return String(v==null?'':v).replace(/[^A-Za-z0-9_-]/g,'')}
+function showTab(name,btn){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});var sec=document.getElementById(name);if(sec)sec.classList.add('active');document.querySelectorAll('.tab-btn').forEach(function(t){t.classList.remove('active')});if(!btn)btn=document.querySelector('[data-tab="'+name+'"]');if(btn)btn.classList.add('active');if(name==='proxies')loadProxies();else if(name==='dashboard')loadDashboard();else if(name==='system')loadSystem();else if(name==='sitetest')loadProxySelect();else if(name==='settings')loadSettings()}
+async function api(url,method,body){method=method||'GET';var opts={method:method,headers:{'Content-Type':'application/json'},credentials:'same-origin'};if(body!==undefined&&body!==null)opts.body=JSON.stringify(body);try{var r=await fetch(url,opts);if(r.status===401||(r.redirected&&r.url.indexOf('/login')>=0)){window.location='/login';return{}}var text=await r.text();try{return JSON.parse(text)}catch(e){return{}}}catch(e){return{error:String(e)}}}
+function toast(msg,type){type=type||'success';var icons={success:'\u2713',error:'\u2715',info:'\u2139',warning:'\u26A0'};var el=document.createElement('div');el.className='toast '+type;var ic=document.createElement('span');ic.className='toast-icon';ic.textContent=icons[type]||'';var tx=document.createElement('span');tx.textContent=msg;el.appendChild(ic);el.appendChild(tx);document.getElementById('toasts').appendChild(el);setTimeout(function(){el.classList.add('leaving');setTimeout(function(){el.remove()},300)},3000)}
+function fallbackCopy(t,cb){var i=document.createElement('textarea');i.value=t;i.style.position='fixed';i.style.opacity='0';document.body.appendChild(i);i.select();try{document.execCommand('copy');cb()}catch(e){toast('Не удалось скопировать','error')}document.body.removeChild(i)}
+function copyText(t){var done=function(){toast('Скопировано','success')};if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).then(done).catch(function(){fallbackCopy(t,done)})}else{fallbackCopy(t,done)}}
+function copyProxy(id){var t=proxyCache[id];if(!t){toast('Нет данных для копирования','error');return}copyText(t)}
+function setBtnLoading(btn,loading,label){if(!btn)return;if(loading){btn.dataset.orig=btn.innerHTML;btn.innerHTML='<span class="spinner"></span> '+(label||'Работаю...');btn.disabled=true}else{if(btn.dataset.orig)btn.innerHTML=btn.dataset.orig;btn.disabled=false}}
+function setRing(ringId,labelId,val){var r=document.getElementById(ringId);if(r)r.style.setProperty('--p',val);var l=document.getElementById(labelId);if(l)l.textContent=val+'%'}
+async function loadDashboard(){var d=await api('/api/system-info');if(d.error)return;var ps=d.proxy_stats||{};var cpu=(d.cpu&&d.cpu.percent)||0;var ram=(d.memory&&d.memory.percent)||0;document.getElementById('dashStats').innerHTML='<div class="stat"><div class="stat-icon">&#9889;</div><div class="stat-value">'+(ps.active||0)+'</div><div class="stat-label">Активных прокси</div></div><div class="stat"><div class="stat-icon">&#128268;</div><div class="stat-value">'+(ps.ports_available||0)+'</div><div class="stat-label">Свободных портов</div></div><div class="stat"><div class="stat-icon">&#128421;</div><div class="stat-value">'+cpu+'%</div><div class="stat-label">CPU</div></div><div class="stat"><div class="stat-icon">&#128190;</div><div class="stat-value">'+ram+'%</div><div class="stat-label">RAM</div></div>';setRing('cpuRing','cpuRingLabel',cpu);setRing('ramRing','ramRingLabel',ram);document.getElementById('cpuBig').textContent=cpu+'%';document.getElementById('cpuSmall').textContent='Ядра: '+((d.cpu&&d.cpu.count)||'\u2014');document.getElementById('ramBig').textContent=((d.memory&&d.memory.used)||'0')+' GB';document.getElementById('ramSmall').textContent='из '+((d.memory&&d.memory.total)||'\u2014')+' GB';document.getElementById('pActive').textContent=ps.active||0;document.getElementById('pTotal').textContent=ps.total||0;document.getElementById('pFree').textContent=ps.ports_available||0}
+async function loadProxies(){var list=document.getElementById('proxyList');list.innerHTML='<div class="loading-block"><span class="spinner"></span> Загружаю прокси...</div>';var d=await api('/api/proxies');var items=d.proxies||[];proxyCache={};allProxyIds=items.map(function(p){return safeId(p.id)});var sa=document.getElementById('selectAllBtn');if(!items.length){list.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon">&#128237;</div><div class="empty-title">Прокси пока нет</div><div class="empty-sub">Создайте их на вкладке «Создать»</div></div>';document.getElementById('delBtn').style.display='none';document.getElementById('rotateBtn').style.display='none';document.getElementById('selectedInfo').textContent='';if(sa){sa.style.display='none';sa.textContent='Выбрать все'}return}selectedProxies=selectedProxies.filter(function(id){return allProxyIds.indexOf(id)>=0});var h='';items.forEach(function(p){var id=safeId(p.id);proxyCache[id]=p.connection_format||'';var sel=selectedProxies.indexOf(id)>=0;var open=p.port_open;h+='<div class="proxy-card'+(sel?' selected':'')+'" onclick="selectProxy(\''+id+'\')"><div class="proxy-status '+(open?'open':'closed')+'"><span class="dot"></span>'+(open?'Открыт':'Закрыт')+'</div><div class="proxy-meta"><b>Порт '+esc(p.port)+'</b> &middot; '+esc(p.username)+':'+esc(p.password)+'</div><div class="proxy-fmt">'+esc(p.connection_format||'')+'</div><button class="copy-btn" onclick="event.stopPropagation();copyProxy(\''+id+'\')">&#128203; Копировать</button></div>'});list.innerHTML=h;var has=selectedProxies.length>0;document.getElementById('delBtn').style.display=has?'inline-flex':'none';document.getElementById('rotateBtn').style.display=has?'inline-flex':'none';if(sa){sa.style.display='inline-flex';sa.textContent=(selectedProxies.length===allProxyIds.length?'Снять выбор':'Выбрать все')}document.getElementById('selectedInfo').textContent=has?'Выбрано: '+selectedProxies.length:''}
+function toggleSelectAll(){if(!allProxyIds.length)return;selectedProxies=(selectedProxies.length===allProxyIds.length)?[]:allProxyIds.slice();loadProxies()}
 function selectProxy(id){var i=selectedProxies.indexOf(id);if(i>=0)selectedProxies.splice(i,1);else selectedProxies.push(id);loadProxies()}
-function deleteSelected(){if(selectedProxies.length===0)return;if(!confirm('Удалить?'))return;api('/api/proxy/delete','POST',{ids:selectedProxies},function(){selectedProxies=[];toast('Удалено');loadProxies();loadDashboard()})}
-function rotateSelected(){if(selectedProxies.length===0)return;api('/api/proxy/rotate','POST',{ids:selectedProxies},function(){toast('Ротировано');loadProxies()})}
-function createProxies(){var c=parseInt(document.getElementById('count').value)||1;api('/api/proxy/create','POST',{count:c,username:document.getElementById('username').value,password:document.getElementById('password').value},function(d){if(d.error){toast(d.error,'error');return}var h='<div class="card" style="margin-top:15px"><h3 style="color:#00c853">✅ Создано '+c+'</h3>';for(var i=0;i<d.proxies.length;i++){var f=d.proxies[i].connection_format;h+='<div style="background:#1a1a24;padding:12px;margin:8px 0;border-radius:8px"><div style="font-family:monospace;color:#00ff88;text-align:center;margin-bottom:8px">'+f+'</div><button class="copy-btn" onclick="copyText(\''+f+'\')">📋 Копировать</button></div>'}h+='</div>';document.getElementById('results').innerHTML=h;toast('Создано '+c+' прокси');loadProxies();loadDashboard()})}
-function exportProxies(){api('/api/proxies','GET',null,function(d){if(!d.proxies||d.proxies.length===0){toast('Нет прокси','error');return}var t='';for(var i=0;i<d.proxies.length;i++)t+=d.proxies[i].connection_format+'\n';var b=new Blob([t],{type:'text/plain'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='proxies.txt';a.click();toast('Экспортировано')})}
-function checkAll(){document.getElementById('checkResults').innerHTML='<div style="text-align:center;padding:20px">⏳ Проверка...</div>';api('/api/proxy/check-all','GET',null,function(d){var h='<h3 style="color:#a29bfe;margin-bottom:10px">Результаты</h3>';h+='<div style="margin-bottom:10px">Всего: <b>'+d.total+'</b> | Открыто: <b style="color:#00c853">'+d.open+'</b> | Работает: <b style="color:#00c853">'+d.working+'</b></div>';h+='<table class="check-table"><tr><th>Порт</th><th>Порт</th><th>Интернет</th><th>IP</th></tr>';for(var i=0;i<d.results.length;i++){var r=d.results[i];var ps=r.open?'<span style="color:#00c853">✅ Открыт</span>':'<span style="color:#ff1744">❌ Закрыт</span>';var ins=!r.open?'<span style="color:#666">-</span>':(r.internet&&r.internet.status==='working'?'<span style="color:#00c853">✅ IPv6</span>':'<span style="color:#ff1744">❌ Нет</span>');var ip=(r.internet&&r.internet.ip)?'<span style="font-size:10px">'+r.internet.ip+'</span>':'-';h+='<tr><td><b>'+r.port+'</b></td><td>'+ps+'</td><td>'+ins+'</td><td>'+ip+'</td></tr>'}h+='</table>';document.getElementById('checkResults').innerHTML=h;toast('Проверено '+d.total+' прокси')})}
-function checkDuplicates(){api('/api/proxy/check-duplicates','GET',null,function(d){toast(d.duplicates>0?'Дубликатов: '+d.duplicates:'Дубликатов нет',d.duplicates>0?'error':'success')})}
-function loadProxySelect(){api('/api/proxies','GET',null,function(d){var s=document.getElementById('testProxy');s.innerHTML='';if(d.proxies)for(var i=0;i<d.proxies.length;i++){var p=d.proxies[i];s.innerHTML+='<option value="'+p.id+'">Порт '+p.port+' ('+p.username+':'+p.password+')</option>'}})}
-function testWebsite(){var pid=document.getElementById('testProxy').value;var url=document.getElementById('testUrl').value;document.getElementById('siteTestResult').innerHTML='<div style="text-align:center;padding:20px">⏳ Проверка '+url+'...</div>';api('/api/proxy/check-website','POST',{proxy_id:pid,url:url},function(d){if(d.error){document.getElementById('siteTestResult').innerHTML='<div style="color:#ff1744">❌ '+d.error+'</div>';return}var color=d.accessible?'#00c853':'#ff1744';var icon=d.accessible?'✅':'❌';document.getElementById('siteTestResult').innerHTML='<div style="background:#1a1a24;padding:15px;border-radius:8px"><div style="font-size:18px;color:'+color+';margin-bottom:10px">'+icon+' HTTP '+d.http_code+' - '+d.url+'</div><div style="color:var(--text2);font-size:12px">Прокси: '+d.proxy+' | IPv6: '+d.ipv6+'</div>'+(d.error?'<div style="color:#ff1744;font-size:12px">'+d.error+'</div>':'')+'</div>'})}
-function loadSystem(){api('/api/system-info','GET',null,function(d){var h='';h+='<div class="sys-card"><h3>🖥️ CPU</h3><div class="sys-value">'+(d.cpu?d.cpu.percent:0)+'%</div><div class="sys-detail">Ядер: '+(d.cpu?d.cpu.count:0)+' | Load: '+((d.system?d.system.load_avg:[0,0,0])[0])+'</div><div class="progress"><div class="progress-fill" style="width:'+(d.cpu?d.cpu.percent:0)+'%"></div></div></div>';h+='<div class="sys-card"><h3>💾 RAM</h3><div class="sys-value">'+(d.memory?d.memory.used:'0')+'/'+(d.memory?d.memory.total:'0')+' GB</div><div class="sys-detail">'+(d.memory?d.memory.percent:0)+'% | Swap: '+(d.swap?d.swap.used:'0')+' GB</div><div class="progress"><div class="progress-fill" style="width:'+(d.memory?d.memory.percent:0)+'%;background:linear-gradient(135deg,#00c853,#69f0ae)"></div></div></div>';h+='<div class="sys-card"><h3>💿 Диски</h3>';for(var i=0;i<(d.disks||[]).length;i++)h+='<div class="sys-detail"><b>'+d.disks[i].mountpoint+'</b>: '+d.disks[i].used+'/'+d.disks[i].total+' GB ('+d.disks[i].percent+'%)</div>';h+='</div>';h+='<div class="sys-card"><h3>🌐 Сеть</h3><div class="sys-detail">Внешний: '+d.network_config.external_ipv4+'</div><div class="sys-detail">Локальный: '+d.network_config.local_ipv4+'</div><div class="sys-detail">IPv6 подсеть: '+d.network_config.ipv6_subnet+'</div><div class="sys-detail">TX: '+(d.network?d.network.sent:'0')+' MB | RX: '+(d.network?d.network.recv:'0')+' MB</div></div>';h+='<div class="sys-card"><h3>📊 Система</h3><div class="sys-detail">Хост: '+d.system.hostname+'</div><div class="sys-detail">ОС: '+d.system.os+'</div><div class="sys-detail">Ядро: '+d.system.kernel+'</div><div class="sys-detail">Аптайм: '+d.system.uptime+'</div></div>';document.getElementById('sysInfo').innerHTML=h})}
-function restart3proxy(){if(!confirm('Перезапустить 3proxy?'))return;api('/api/server/restart-3proxy','POST',null,function(d){toast(d.message||'3proxy перезапущен')})}
-function rebootServer(){if(!confirm('⚠️ Перезагрузить сервер?'))return;api('/api/server/reboot','POST',null,function(d){toast(d.message||'Перезагрузка...','warning')})}
-function loadSettings(){api('/api/system-info','GET',null,function(d){document.getElementById('settingsInfo').innerHTML='Внешний IP: <b>'+d.network_config.external_ipv4+'</b><br>Локальный IP: <b>'+d.network_config.local_ipv4+'</b><br>IPv6 подсеть: <b>'+d.network_config.ipv6_subnet+'</b><br>Прокси: <b>'+(d.proxy_stats?d.proxy_stats.total:0)+'</b>'})}
-function changePassword(){var oldP=document.getElementById('oldPassword').value;var newP=document.getElementById('newPassword').value;if(!oldP||!newP){toast('Заполните оба поля','error');return}if(newP.length<6){toast('Минимум 6 символов','error');return}api('/api/settings/change-password','POST',{old_password:oldP,new_password:newP},function(d){if(d.error){toast(d.error,'error')}else{toast('✅ '+d.message);document.getElementById('oldPassword').value='';document.getElementById('newPassword').value=''}})}
+async function deleteSelected(){if(!selectedProxies.length)return;if(!confirm('Удалить выбранные прокси: '+selectedProxies.length+'?'))return;var d=await api('/api/proxy/delete','POST',{ids:selectedProxies});if(d.error){toast(d.error,'error');return}selectedProxies=[];toast('Удалено','success');loadProxies();loadDashboard()}
+async function rotateSelected(){if(!selectedProxies.length)return;var n=selectedProxies.length;var d=await api('/api/proxy/rotate','POST',{ids:selectedProxies});if(d.error){toast(d.error,'error');return}toast('Ротировано: '+n,'success');loadProxies()}
+async function createProxies(btn){setBtnLoading(btn,true,'Создаю...');var c=parseInt(document.getElementById('count').value)||1;var d=await api('/api/proxy/create','POST',{count:c,username:document.getElementById('username').value,password:document.getElementById('password').value});setBtnLoading(btn,false);if(d.error){toast(d.error,'error');return}var items=d.proxies||[];items.forEach(function(p){proxyCache[safeId(p.id)]=p.connection_format||''});var h='<div class="card"><h3>&#10003; Создано: '+items.length+'</h3>';items.forEach(function(p){var id=safeId(p.id);h+='<div style="background:rgba(6,6,12,0.7);padding:12px;margin:10px 0;border-radius:9px;border:1px solid rgba(255,255,255,0.05)"><div style="font-family:monospace;color:#22d3ee;font-size:12px;text-align:center;word-break:break-all;margin-bottom:8px">'+esc(p.connection_format||'')+'</div><button class="copy-btn" onclick="copyProxy(\''+id+'\')">&#128203; Копировать</button></div>'});h+='</div>';document.getElementById('results').innerHTML=h;toast('Создано: '+items.length,'success');loadProxies();loadDashboard()}
+async function exportProxies(){var d=await api('/api/proxies');var items=d.proxies||[];if(!items.length){toast('Нет прокси для экспорта','error');return}var t=items.map(function(p){return p.connection_format}).join('\n');var b=new Blob([t],{type:'text/plain'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='proxies.txt';a.click();toast('Экспортировано: '+items.length,'success')}
+async function checkAll(btn){setBtnLoading(btn,true,'Проверяю...');var box=document.getElementById('checkResults');box.innerHTML='<div class="loading-block"><span class="spinner"></span> Проверяю все прокси...</div>';var d=await api('/api/proxy/check-all');setBtnLoading(btn,false);var items=d.results||[];if(!items.length){box.innerHTML='<div class="empty"><div class="empty-icon">&#128237;</div><div class="empty-title">Нет прокси для проверки</div><div class="empty-sub">Сначала создайте прокси</div></div>';return}var h='<div style="display:flex;gap:16px;margin-bottom:14px;font-size:13px;flex-wrap:wrap"><span>Всего: <b>'+d.total+'</b></span><span style="color:#10b981">Открыто: <b>'+d.open+'</b></span><span style="color:#10b981">Работает: <b>'+d.working+'</b></span></div>';h+='<table class="tbl"><thead><tr><th>Порт</th><th>Статус</th><th>Интернет</th><th>IPv6</th></tr></thead><tbody>';items.forEach(function(r){var portBadge=r.open?'<span class="badge badge-ok">Открыт</span>':'<span class="badge badge-err">Закрыт</span>';var inetBadge=!r.open?'<span class="badge badge-wait">&mdash;</span>':(r.internet&&r.internet.status==='working'?'<span class="badge badge-ok">&#10003; IPv6</span>':'<span class="badge badge-err">Нет</span>');var ip=(r.internet&&r.internet.ip)?'<span style="font-family:monospace;font-size:11px;color:#22d3ee">'+esc(r.internet.ip)+'</span>':'&mdash;';h+='<tr><td><b>'+esc(r.port)+'</b></td><td>'+portBadge+'</td><td>'+inetBadge+'</td><td>'+ip+'</td></tr>'});h+='</tbody></table>';box.innerHTML=h;toast('Проверено: '+d.total,'success')}
+async function checkDuplicates(){var d=await api('/api/proxy/check-duplicates');if(d.duplicates>0)toast('Дубликатов найдено: '+d.duplicates,'warning');else toast('Дубликатов нет','success')}
+async function loadProxySelect(){var s=document.getElementById('testProxy');s.innerHTML='<option value="">Загрузка...</option>';var d=await api('/api/proxies');var items=d.proxies||[];s.innerHTML='';if(!items.length){s.innerHTML='<option value="">Нет прокси</option>';return}items.forEach(function(p){var o=document.createElement('option');o.value=p.id;o.textContent='Порт '+p.port+' ('+p.username+')';s.appendChild(o)})}
+async function testWebsite(btn){var pid=document.getElementById('testProxy').value;var url=document.getElementById('testUrl').value;var box=document.getElementById('siteTestResult');setBtnLoading(btn,true,'Проверяю...');box.innerHTML='<div class="loading-block"><span class="spinner"></span> Проверяю '+esc(url)+'...</div>';var d=await api('/api/proxy/check-website','POST',{proxy_id:pid,url:url});setBtnLoading(btn,false);if(d.error){box.innerHTML='<div class="card" style="border-color:rgba(239,68,68,0.3)"><span style="color:#fca5a5">&#10005; '+esc(d.error)+'</span></div>';return}var ok=d.accessible;var color=ok?'#10b981':'#ef4444';box.innerHTML='<div class="card" style="border-color:'+color+'33"><div style="font-size:16px;color:'+color+';margin-bottom:10px;font-weight:600">'+(ok?'&#10003;':'&#10005;')+' HTTP '+esc(d.http_code)+' &middot; '+esc(d.url)+'</div><div style="font-size:12px;color:var(--text-dim);line-height:1.7">Прокси: <b>'+esc(d.proxy)+'</b><br>IPv6: <span style="font-family:monospace;color:#22d3ee">'+esc(d.ipv6)+'</span></div>'+(d.error?'<div style="color:#fca5a5;font-size:12px;margin-top:8px">'+esc(d.error)+'</div>':'')+'</div>'}
+async function loadSystem(){var box=document.getElementById('sysInfo');box.innerHTML='<div class="loading-block" style="grid-column:1/-1"><span class="spinner"></span> Загружаю системную информацию...</div>';var d=await api('/api/system-info');if(d.error){box.innerHTML='<div class="card">Ошибка: '+esc(d.error)+'</div>';return}var nc=d.network_config||{};var sys=d.system||{};var cpu=d.cpu||{};var mem=d.memory||{};var sw=d.swap||{};var net=d.network||{};var h='';h+='<div class="card"><h3>&#128421; CPU</h3><div style="font-size:26px;font-weight:700;color:#fff;margin:6px 0">'+(cpu.percent||0)+'%</div><div style="font-size:12px;color:var(--text-dim)">Ядер: '+(cpu.count||0)+' &middot; Load: '+((sys.load_avg&&sys.load_avg[0])||0)+'</div></div>';h+='<div class="card"><h3>&#128190; RAM</h3><div style="font-size:26px;font-weight:700;color:#fff;margin:6px 0">'+(mem.used||'0')+' / '+(mem.total||'0')+' GB</div><div style="font-size:12px;color:var(--text-dim)">'+(mem.percent||0)+'% использовано &middot; Swap: '+(sw.used||'0')+' GB</div></div>';h+='<div class="card"><h3>&#128189; Диски</h3>';(d.disks||[]).forEach(function(k){h+='<div style="font-size:12px;color:var(--text-dim);margin:5px 0"><b style="color:#fff">'+esc(k.mountpoint)+'</b> &mdash; '+esc(k.used)+' / '+esc(k.total)+' GB ('+esc(k.percent)+'%)</div>'});h+='</div>';h+='<div class="card"><h3>&#127760; Сеть</h3><div style="font-size:12px;color:var(--text-dim);line-height:1.9">Внешний IPv4: <b style="color:#fff">'+esc(nc.external_ipv4)+'</b><br>Локальный IPv4: <b style="color:#fff">'+esc(nc.local_ipv4)+'</b><br>IPv6 подсеть: <span style="font-family:monospace;color:#22d3ee">'+esc(nc.ipv6_subnet)+'</span><br>TX: <b style="color:#fff">'+(net.sent||'0')+' MB</b> &middot; RX: <b style="color:#fff">'+(net.recv||'0')+' MB</b></div></div>';h+='<div class="card"><h3>&#9881; Система</h3><div style="font-size:12px;color:var(--text-dim);line-height:1.9">Хост: <b style="color:#fff">'+esc(sys.hostname)+'</b><br>ОС: '+esc(sys.os)+'<br>Ядро: '+esc(sys.kernel)+'<br>Аптайм: '+esc(sys.uptime)+'</div></div>';box.innerHTML=h}
+async function restart3proxy(){if(!confirm('Перезапустить 3proxy?'))return;toast('Перезапускаю...','info');var d=await api('/api/server/restart-3proxy','POST');if(d.error)toast(d.error,'error');else toast(d.message||'3proxy перезапущен','success')}
+async function rebootServer(){if(!confirm('Перезагрузить сервер?\n\nВсе соединения будут разорваны.'))return;toast('Перезагрузка...','warning');var d=await api('/api/server/reboot','POST');if(d.error)toast(d.error,'error')}
+async function loadSettings(){var d=await api('/api/system-info');if(d.error)return;var nc=d.network_config||{};var ps=d.proxy_stats||{};document.getElementById('settingsInfo').innerHTML='Внешний IP: <b style="color:#fff">'+esc(nc.external_ipv4)+'</b><br>Локальный IP: <b style="color:#fff">'+esc(nc.local_ipv4)+'</b><br>IPv6 подсеть: <span style="font-family:monospace;color:#22d3ee">'+esc(nc.ipv6_subnet)+'</span><br>Всего прокси: <b style="color:#fff">'+(ps.total||0)+'</b>'}
+async function changePassword(){var o=document.getElementById('oldPassword').value;var n=document.getElementById('newPassword').value;if(!o||!n){toast('Заполните оба поля','error');return}if(n.length<6){toast('Минимум 6 символов','error');return}var d=await api('/api/settings/change-password','POST',{old_password:o,new_password:n});if(d.error)toast(d.error,'error');else{toast('Пароль изменён','success');document.getElementById('oldPassword').value='';document.getElementById('newPassword').value=''}}
+async function checkStatus(){var pill=document.getElementById('statusPill');var label=document.getElementById('statusLabel');try{var r=await fetch('/api/system-info',{credentials:'same-origin'});var ct=r.headers.get('content-type')||'';if(r.ok&&ct.indexOf('application/json')>=0){pill.classList.remove('offline');label.textContent='Онлайн'}else{pill.classList.add('offline');label.textContent='Офлайн'}}catch(e){pill.classList.add('offline');label.textContent='Офлайн'}}
 setInterval(function(){if(document.getElementById('dashboard').classList.contains('active'))loadDashboard()},10000);
-loadDashboard();
-</script></body></html>
+setInterval(checkStatus,30000);
+loadDashboard();checkStatus();
+</script>
+</body>
+</html>
 HTMLEOF
 
 echo "[6/6] Сервисы и запуск..."
