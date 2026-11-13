@@ -1,6 +1,10 @@
-cat > /root/proxy-farm3/install.sh << 'INSTALLEOF'
 #!/bin/bash
 set -e
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Запустите установщик от root: sudo bash install.sh"
+    exit 1
+fi
 
 export NEEDRESTART_MODE=a
 export DEBIAN_FRONTEND=noninteractive
@@ -12,16 +16,24 @@ echo "║          Полный fix + Тест сайтов работает    
 echo "╚══════════════════════════════════════════════════════════╝"
 
 # === АВТООПРЕДЕЛЕНИЕ ===
-IPV4_LOCAL=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
-[ -z "$IPV4_LOCAL" ] && IPV4_LOCAL=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
+INTERFACE=$(ip -4 route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+[ -z "$INTERFACE" ] && INTERFACE=$(ip -6 route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+[ -z "$INTERFACE" ] && INTERFACE=$(ip -br l 2>/dev/null | awk '$1 !~ "lo|vir|wl|@NONE" {print $1; exit}')
 
-IPV6_MAIN=$(ip -6 addr show scope global | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/64)' | grep -v ^fe80 | head -1)
-[ -z "$IPV6_MAIN" ] && IPV6_MAIN=$(ip -6 addr show | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/64)' | grep -v ^fe80 | head -1)
+IPV4_LOCAL=$(ip -4 -o addr show dev "$INTERFACE" scope global 2>/dev/null | awk '{split($4,a,"/"); print a[1]; exit}')
+[ -z "$IPV4_LOCAL" ] && IPV4_LOCAL=$(ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
 
-IPV6_SUBNET=$(echo "$IPV6_MAIN" | awk -F: '{print $1":"$2":"$3":"$4"::/64"}')
+IPV6_MAIN=$(ip -6 -o addr show dev "$INTERFACE" scope global 2>/dev/null | awk '{split($4,a,"/"); if(a[2]=="64"){print a[1]; exit}}')
+[ -z "$IPV6_MAIN" ] && IPV6_MAIN=$(ip -6 -o addr show dev "$INTERFACE" scope global 2>/dev/null | awk '{split($4,a,"/"); print a[1]; exit}')
+[ -z "$IPV6_MAIN" ] && IPV6_MAIN=$(ip -6 addr show scope global 2>/dev/null | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/64)' | grep -v ^fe80 | head -1)
 
-INTERFACE=$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" {print $1}' | head -1)
-[ -z "$INTERFACE" ] && INTERFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -1)
+IPV6_SUBNET=""
+if [ -n "$INTERFACE" ]; then
+    IPV6_SUBNET=$(ip -6 route show dev "$INTERFACE" 2>/dev/null | awk '$1 ~ /^[0-9a-fA-F:]+\/64$/ && $1 !~ /^fe80/ {print $1; exit}')
+fi
+if [ -z "$IPV6_SUBNET" ] && [ -n "$IPV6_MAIN" ]; then
+    IPV6_SUBNET=$(echo "$IPV6_MAIN" | awk -F: '{print $1":"$2":"$3":"$4"::/64"}')
+fi
 
 IPV4_EXTERNAL=$(curl -4 -s --connect-timeout 3 ifconfig.me 2>/dev/null || curl -4 -s --connect-timeout 3 ipinfo.io/ip 2>/dev/null || echo "")
 
@@ -39,30 +51,55 @@ echo ""
 
 read -p "Локальный IPv4 [$IPV4_LOCAL]: " input
 IPV4_LOCAL=${input:-$IPV4_LOCAL}
+while ! echo "$IPV4_LOCAL" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; do
+    read -p "❌ Некорректный IPv4. Введите локальный IPv4: " IPV4_LOCAL
+done
 
 read -p "Внешний IPv4 [${IPV4_EXTERNAL:-введите}]: " input
 IPV4_EXTERNAL=${input:-$IPV4_EXTERNAL}
-while [ -z "$IPV4_EXTERNAL" ]; do
+while ! echo "$IPV4_EXTERNAL" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; do
     read -p "❌ Внешний IPv4 обязателен! Введите: " IPV4_EXTERNAL
 done
 
 read -p "IPv6 подсеть [$IPV6_SUBNET]: " input
 IPV6_SUBNET=${input:-$IPV6_SUBNET}
+while ! echo "$IPV6_SUBNET" | grep -qE '^[0-9a-fA-F:]+::/64$'; do
+    read -p "❌ Нужна подсеть вида 2001:db8:1:2::/64. Введите: " IPV6_SUBNET
+done
 
 read -p "Основной IPv6 [$IPV6_MAIN]: " input
 IPV6_MAIN=${input:-$IPV6_MAIN}
+while ! echo "$IPV6_MAIN" | grep -qE '^[0-9a-fA-F:]+$'; do
+    read -p "❌ Введите основной IPv6-адрес сервера: " IPV6_MAIN
+done
 
 read -p "Интерфейс [$INTERFACE]: " input
 INTERFACE=${input:-$INTERFACE}
+while [ ! -e "/sys/class/net/$INTERFACE" ]; do
+    read -p "❌ Интерфейс не найден. Введите имя (ens33/eth0/ens3): " INTERFACE
+done
 
-read -p "Пароль админа [Maxim1809]: " input
-ADMIN_PASS=${input:-Maxim1809}
+read -p "Пароль админа [сгенерировать автоматически]: " input
+ADMIN_PASS="$input"
+if [ -z "$ADMIN_PASS" ]; then
+    ADMIN_PASS=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 14)
+    echo "Сгенерирован пароль админа: $ADMIN_PASS"
+fi
+while ! echo "$ADMIN_PASS" | grep -qE '^[A-Za-z0-9]{6,}$'; do
+    read -p "❌ Только латиница и цифры, минимум 6 символов. Введите пароль админа: " ADMIN_PASS
+done
 
 read -p "Начальный порт [30000]: " input
 PROXY_START=${input:-30000}
+while ! [[ "$PROXY_START" =~ ^[0-9]+$ ]] || [ "$PROXY_START" -lt 1024 ] || [ "$PROXY_START" -gt 65535 ]; do
+    read -p "❌ Порт должен быть 1024-65535. Введите начальный порт: " PROXY_START
+done
 
 read -p "Конечный порт [31000]: " input
 PROXY_END=${input:-31000}
+while ! [[ "$PROXY_END" =~ ^[0-9]+$ ]] || [ "$PROXY_END" -lt "$PROXY_START" ] || [ "$PROXY_END" -gt 65535 ]; do
+    read -p "❌ Конечный порт должен быть >= $PROXY_START. Введите: " PROXY_END
+done
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
@@ -87,24 +124,43 @@ fi
 echo ""
 echo "[1/6] Установка пакетов..."
 apt-get update -qq
-apt-get install -y -qq python3 python3-pip python3-venv build-essential wget tar gzip net-tools curl > /dev/null 2>&1
+apt-get install -y -qq python3 python3-pip python3-venv build-essential wget tar gzip net-tools curl iproute2 ca-certificates
 
 echo "[2/6] Компиляция 3proxy..."
 cd /tmp
-rm -rf 3proxy-0.9.4
-wget -q https://github.com/3proxy/3proxy/archive/refs/tags/0.9.4.tar.gz
+rm -rf 3proxy-0.9.4 0.9.4.tar.gz
+wget -q --tries=3 --timeout=20 https://github.com/3proxy/3proxy/archive/refs/tags/0.9.4.tar.gz || { echo "❌ Не удалось скачать 3proxy. Проверь интернет на сервере."; exit 1; }
 tar -xzf 0.9.4.tar.gz
 cd 3proxy-0.9.4
-make -f Makefile.Linux > /dev/null 2>&1
-make -f Makefile.Linux install > /dev/null 2>&1
+make -f Makefile.Linux > /tmp/3proxy-build.log 2>&1 || { echo "❌ Ошибка сборки 3proxy, лог: /tmp/3proxy-build.log"; tail -20 /tmp/3proxy-build.log; exit 1; }
+make -f Makefile.Linux install > /tmp/3proxy-install.log 2>&1 || { echo "❌ Ошибка установки 3proxy, лог: /tmp/3proxy-install.log"; tail -20 /tmp/3proxy-install.log; exit 1; }
+THREEPROXY_BIN=$(command -v 3proxy || true)
+[ -z "$THREEPROXY_BIN" ] && [ -x /usr/local/bin/3proxy ] && THREEPROXY_BIN=/usr/local/bin/3proxy
+if [ -z "$THREEPROXY_BIN" ]; then
+    echo "❌ Бинарник 3proxy не найден после сборки."
+    exit 1
+fi
+ln -sf "$THREEPROXY_BIN" /usr/bin/3proxy
 
 echo "[3/6] Настройка Python..."
 mkdir -p /opt/proxy-farm/templates /etc/3proxy /var/log/3proxy
 cd /opt/proxy-farm
 python3 -m venv venv
 source venv/bin/activate
-pip install --upgrade pip > /dev/null 2>&1
-pip install flask flask-login werkzeug psutil > /dev/null 2>&1
+pip install --upgrade pip
+pip install flask flask-login werkzeug psutil
+
+cat > /opt/proxy-farm/config.json << CFGEOF
+{
+  "interface": "$INTERFACE",
+  "local_ipv4": "$IPV4_LOCAL",
+  "external_ipv4": "$IPV4_EXTERNAL",
+  "ipv6_main": "$IPV6_MAIN",
+  "ipv6_subnet": "$IPV6_SUBNET",
+  "proxy_start": $PROXY_START,
+  "proxy_end": $PROXY_END
+}
+CFGEOF
 
 echo "[4/6] Создание приложения..."
 cat > /opt/proxy-farm/app.py << PYEOF
@@ -125,7 +181,16 @@ except:
     PSUTIL = False
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(24).hex()
+SECRET_FILE = '/opt/proxy-farm/secret.key'
+try:
+    with open(SECRET_FILE) as f:
+        SECRET_KEY = f.read().strip()
+except Exception:
+    SECRET_KEY = os.urandom(24).hex()
+    with open(SECRET_FILE, 'w') as f:
+        f.write(SECRET_KEY)
+    os.chmod(SECRET_FILE, 0o600)
+app.config['SECRET_KEY'] = SECRET_KEY
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -139,6 +204,36 @@ INTERFACE = "$INTERFACE"
 PROXY_START = $PROXY_START
 PROXY_END = $PROXY_END
 ADMIN_HASH = generate_password_hash("$ADMIN_PASS")
+IP_BIN = '/usr/sbin/ip' if os.path.exists('/usr/sbin/ip') else '/sbin/ip'
+
+def detect_interface():
+    for family in ('-4', '-6'):
+        try:
+            out = subprocess.check_output(
+                [IP_BIN, family, 'route', 'show', 'default'],
+                text=True, stderr=subprocess.DEVNULL)
+            for line in out.splitlines():
+                parts = line.split()
+                if 'dev' in parts:
+                    return parts[parts.index('dev') + 1]
+        except Exception:
+            pass
+    return INTERFACE
+
+def detect_local_ipv4():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('1.1.1.1', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and not ip.startswith('127.'):
+            return ip
+    except Exception:
+        pass
+    return LOCAL_IPV4
+
+INTERFACE = detect_interface() or INTERFACE
+LOCAL_IPV4 = detect_local_ipv4() or LOCAL_IPV4
 
 PROXY_DB = '/opt/proxy-farm/proxies.json'
 USERS_DB = '/opt/proxy-farm/users.json'
@@ -170,6 +265,16 @@ def load_proxies():
 def save_proxies(proxies):
     with open(PROXY_DB, 'w') as f: json.dump(proxies, f, indent=2)
 
+def get_admin_hash():
+    try:
+        with open(USERS_DB) as f: users = json.load(f)
+        for u in users:
+            if u.get('username') == 'admin':
+                return u.get('password')
+    except Exception:
+        pass
+    return ADMIN_HASH
+
 def generate_safe_password(length=10):
     chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
     return ''.join(random.choice(chars) for _ in range(length))
@@ -179,14 +284,22 @@ def generate_safe_username():
 
 def generate_random_ipv6():
     network = ipaddress.ip_network(IPV6_SUBNET)
-    return str(network.network_address + random.getrandbits(64))
+    used = {p.get('ipv6') for p in load_proxies()}
+    for _ in range(100):
+        ip = str(network.network_address + random.randint(1, (1 << 64) - 2))
+        if ip not in used:
+            return ip
+    return str(network.network_address + random.randint(1, (1 << 64) - 2))
 
 def add_ipv6(ipv6):
     try:
-        result = subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'show', 'dev', INTERFACE], capture_output=True, text=True)
-        if ipv6 in result.stdout: return True
+        result = subprocess.run([IP_BIN, '-6', '-o', 'addr', 'show', 'dev', INTERFACE], capture_output=True, text=True)
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if 'inet6' in parts and parts[parts.index('inet6') + 1].split('/')[0] == ipv6:
+                return True
         for attempt in range(3):
-            r = subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True, text=True)
+            r = subprocess.run([IP_BIN, '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True, text=True)
             if r.returncode == 0: return True
             time.sleep(0.5)
         return False
@@ -194,13 +307,13 @@ def add_ipv6(ipv6):
 
 def remove_ipv6(ipv6):
     try:
-        subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'del', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True)
+        subprocess.run([IP_BIN, '-6', 'addr', 'del', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True)
     except: pass
 
 def update_3proxy_config():
     try:
         proxies = load_proxies()
-        config = "daemon\nnserver 1.1.1.1\nmaxconn 200\nnscache 65536\ntimeouts 1 5 30 60 180 1800 15 60\nsetgid 65535\nsetuid 65535\n\nauth strong\n"
+        config = "nserver 1.1.1.1\nmaxconn 200\nnscache 65536\ntimeouts 1 5 30 60 180 1800 15 60\nsetgid 65535\nsetuid 65535\n\nauth strong\n"
         users_added = set()
         for p in proxies:
             if p.get('active', True):
@@ -224,12 +337,11 @@ def update_3proxy_config():
 
 def restart_3proxy():
     try:
-        os.system('pkill -9 3proxy 2>/dev/null')
-        time.sleep(2)
-        subprocess.Popen('/usr/bin/3proxy /etc/3proxy/3proxy.cfg', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(3)
-        return True
-    except: return False
+        r = subprocess.run(['/bin/systemctl', 'restart', '3proxy'],
+                           capture_output=True, text=True, timeout=30)
+        return r.returncode == 0
+    except Exception:
+        return False
 
 def check_port(port):
     try:
@@ -291,8 +403,9 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        if request.form.get('username') == 'admin' and check_password_hash(ADMIN_HASH, request.form.get('password')):
-            login_user(User('1', 'admin', ADMIN_HASH))
+        admin_hash = get_admin_hash()
+        if request.form.get('username') == 'admin' and admin_hash and check_password_hash(admin_hash, request.form.get('password')):
+            login_user(User('1', 'admin', admin_hash))
             return redirect(url_for('index'))
         return render_template('login.html', error='Неверные данные')
     return render_template('login.html')
@@ -404,17 +517,28 @@ def check_website():
 @app.route('/api/settings/change-password', methods=['POST'])
 @login_required
 def change_password():
+    global ADMIN_HASH
     try:
-        data = request.json
-        if not check_password_hash(ADMIN_HASH, data.get('old_password','')): return jsonify({'error': 'Неверный пароль'}), 403
-        new_hash = generate_password_hash(data.get('new_password',''))
+        data = request.json or {}
+        new_password = data.get('new_password', '')
+        if len(new_password) < 6:
+            return jsonify({'error': 'Минимум 6 символов'}), 400
+        current_hash = get_admin_hash() or ADMIN_HASH
+        if not check_password_hash(current_hash, data.get('old_password', '')):
+            return jsonify({'error': 'Неверный пароль'}), 403
+        new_hash = generate_password_hash(new_password)
         try:
             with open(USERS_DB) as f: users = json.load(f)
         except: users = []
+        found = False
         for u in users:
-            if u.get('username')=='admin': u['password'] = new_hash
-        with open(USERS_DB,'w') as f: json.dump(users, f)
-        import app as app_module; app_module.ADMIN_HASH = new_hash
+            if u.get('username') == 'admin':
+                u['password'] = new_hash
+                found = True
+        if not found:
+            users.append({'id': '1', 'username': 'admin', 'password': new_hash})
+        with open(USERS_DB, 'w') as f: json.dump(users, f)
+        ADMIN_HASH = new_hash
         return jsonify({'message': 'Пароль изменен!'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -440,6 +564,107 @@ if __name__ == '__main__':
         with open(USERS_DB,'w') as f: json.dump(users, f)
     update_3proxy_config(); restart_3proxy()
     app.run(host='0.0.0.0', port=2525, debug=False, threaded=True)
+PYEOF
+
+cat > /opt/proxy-farm/restore_ipv6.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Восстанавливает IPv6-адреса прокси и пересобирает 3proxy.cfg после ребута."""
+import json
+import os
+import subprocess
+import sys
+
+BASE = '/opt/proxy-farm'
+CONFIG = os.path.join(BASE, 'config.json')
+PROXIES = os.path.join(BASE, 'proxies.json')
+IP_BIN = '/usr/sbin/ip' if os.path.exists('/usr/sbin/ip') else '/sbin/ip'
+
+
+def run(args):
+    return subprocess.run(args, capture_output=True, text=True)
+
+
+def read_json(path, default):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def find_interface(cfg):
+    for family in ('-4', '-6'):
+        r = run([IP_BIN, family, 'route', 'show', 'default'])
+        for line in r.stdout.splitlines():
+            parts = line.split()
+            if 'dev' in parts:
+                iface = parts[parts.index('dev') + 1]
+                if os.path.exists('/sys/class/net/' + iface):
+                    return iface
+    iface = cfg.get('interface')
+    if iface and os.path.exists('/sys/class/net/' + iface):
+        return iface
+    try:
+        for name in os.listdir('/sys/class/net'):
+            if name != 'lo' and os.path.isdir('/sys/class/net/' + name):
+                return name
+    except Exception:
+        pass
+    return None
+
+
+def main():
+    cfg = read_json(CONFIG, {})
+    proxies = read_json(PROXIES, [])
+    iface = find_interface(cfg)
+    if not iface:
+        print('restore-ipv6: сетевой интерфейс не найден')
+        return 0
+
+    active = [p for p in proxies if p.get('active', True) and p.get('ipv6')]
+    current = set()
+    for line in run([IP_BIN, '-6', '-o', 'addr', 'show', 'dev', iface]).stdout.splitlines():
+        parts = line.split()
+        if 'inet6' in parts:
+            current.add(parts[parts.index('inet6') + 1].split('/')[0])
+    restored = 0
+    for p in active:
+        ip = p['ipv6']
+        if ip in current:
+            restored += 1
+            continue
+        r = run([IP_BIN, '-6', 'addr', 'add', f'{ip}/64', 'dev', iface])
+        err = (r.stderr or '') + (r.stdout or '')
+        if r.returncode == 0 or 'File exists' in err:
+            restored += 1
+        else:
+            print(f'restore-ipv6: не удалось добавить {ip}: {err.strip()}')
+
+    print(f'restore-ipv6: {restored}/{len(active)} адресов на {iface}')
+
+    if cfg.get('interface') != iface:
+        cfg['interface'] = iface
+        try:
+            with open(CONFIG, 'w') as f:
+                json.dump(cfg, f, indent=2)
+        except Exception as e:
+            print(f'restore-ipv6: не удалось обновить config.json: {e}')
+
+    try:
+        sys.path.insert(0, BASE)
+        import app as farm
+        if farm.update_3proxy_config():
+            print('restore-ipv6: 3proxy.cfg обновлён')
+        else:
+            print('restore-ipv6: 3proxy.cfg НЕ обновлён')
+    except Exception as e:
+        print(f'restore-ipv6: конфиг 3proxy не обновлён: {e}')
+
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
 PYEOF
 
 echo "[5/6] Создание веб-интерфейса..."
@@ -495,12 +720,18 @@ echo "[6/6] Сервисы и запуск..."
 
 cat > /etc/systemd/system/3proxy.service << 'EOF'
 [Unit]
-Description=3proxy
-After=network.target
+Description=3proxy IPv6 Proxy Farm
+After=network-online.target
+Wants=network-online.target
+
 [Service]
-Type=forking
+Type=simple
+ExecStartPre=/opt/proxy-farm/venv/bin/python /opt/proxy-farm/restore_ipv6.py
 ExecStart=/usr/bin/3proxy /etc/3proxy/3proxy.cfg
 Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -508,78 +739,160 @@ EOF
 cat > /etc/systemd/system/proxy-farm.service << 'EOF'
 [Unit]
 Description=ProxyFarm Web
-After=network.target
+After=network-online.target 3proxy.service
+Wants=network-online.target
+
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/opt/proxy-farm
-Environment="PATH=/opt/proxy-farm/venv/bin"
+Environment="PATH=/opt/proxy-farm/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONUNBUFFERED=1"
 ExecStart=/opt/proxy-farm/venv/bin/python /opt/proxy-farm/app.py
 Restart=always
+RestartSec=3
+
 [Install]
 WantedBy=multi-user.target
 EOF
 
 cd /opt/proxy-farm && source venv/bin/activate
 python3 << PYEOF
-import json, subprocess, ipaddress, random
+import json, subprocess, ipaddress, random, os
+from datetime import datetime
+from werkzeug.security import generate_password_hash
 INTERFACE = "$INTERFACE"
 IPV6_SUBNET = "$IPV6_SUBNET"
 IPV4_EXTERNAL = "$IPV4_EXTERNAL"
 IPV4_LOCAL = "$IPV4_LOCAL"
 PROXY_START = $PROXY_START
-network = ipaddress.ip_network(IPV6_SUBNET)
+PROXY_END = $PROXY_END
+ADMIN_PASS = "$ADMIN_PASS"
+PROXY_DB = '/opt/proxy-farm/proxies.json'
+USERS_DB = '/opt/proxy-farm/users.json'
+IP_BIN = '/usr/sbin/ip' if os.path.exists('/usr/sbin/ip') else '/sbin/ip'
+
+try:
+    with open(USERS_DB) as f: users = json.load(f)
+except Exception:
+    users = []
+admin_hash = generate_password_hash(ADMIN_PASS)
+for u in users:
+    if u.get('username') == 'admin':
+        u['password'] = admin_hash
+        break
+else:
+    users.append({'id': '1', 'username': 'admin', 'password': admin_hash})
+with open(USERS_DB, 'w') as f: json.dump(users, f)
+print("Пароль админа сохранён в users.json")
+
 proxies = []
-for i in range(5):
-    ipv6 = str(network.network_address + random.getrandbits(64))
-    port = PROXY_START + i
-    login = f"user{port}"
-    passwd = f"pass{port}"
-    subprocess.run(['/usr/sbin/ip', '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True)
-    proxies.append({'id': f"p{port}", 'ipv6': ipv6, 'port': port, 'username': login, 'password': passwd, 'created_at': '2026-08-07T00:00:00', 'active': True, 'connection_format': f"http://{IPV4_EXTERNAL}:{port}:{login}:{passwd}"})
-with open('/opt/proxy-farm/proxies.json', 'w') as f: json.dump(proxies, f, indent=2)
-config = "daemon\nnserver 1.1.1.1\nmaxconn 200\nnscache 65536\ntimeouts 1 5 30 60 180 1800 15 60\nsetgid 65535\nsetuid 65535\n\nauth strong\n"
+try:
+    if os.path.getsize(PROXY_DB) > 2:
+        with open(PROXY_DB) as f: proxies = json.load(f)
+except Exception:
+    proxies = []
+
+if proxies:
+    print(f"Существующие прокси сохранены: {len(proxies)}")
+else:
+    network = ipaddress.ip_network(IPV6_SUBNET)
+    used = set()
+    count = min(5, PROXY_END - PROXY_START + 1)
+    for i in range(count):
+        while True:
+            ipv6 = str(network.network_address + random.randint(1, (1 << 64) - 2))
+            if ipv6 not in used:
+                used.add(ipv6)
+                break
+        port = PROXY_START + i
+        login = f"user{port}"
+        passwd = f"pass{port}"
+        proxies.append({'id': f"p{port}", 'ipv6': ipv6, 'port': port, 'username': login, 'password': passwd, 'created_at': datetime.now().isoformat(), 'active': True, 'connection_format': f"http://{IPV4_EXTERNAL}:{port}:{login}:{passwd}"})
+    with open(PROXY_DB, 'w') as f: json.dump(proxies, f, indent=2)
+    print(f"Создано {len(proxies)} тестовых прокси")
+
+for p in proxies:
+    if p.get('active', True) and p.get('ipv6'):
+        r = subprocess.run([IP_BIN, '-6', 'addr', 'add', f"{p['ipv6']}/64", 'dev', INTERFACE], capture_output=True, text=True)
+        err = (r.stderr or '') + (r.stdout or '')
+        if r.returncode != 0 and 'File exists' not in err:
+            print(f"⚠ IPv6 {p['ipv6']} не добавлен: {err.strip()}")
+
+config = "nserver 1.1.1.1\nmaxconn 200\nnscache 65536\ntimeouts 1 5 30 60 180 1800 15 60\nsetgid 65535\nsetuid 65535\n\nauth strong\n"
 users_added = set()
 for p in proxies:
+    if not p.get('active', True):
+        continue
     u = f"{p['username']}:{p['password']}"
     if u not in users_added:
         config += f"users {p['username']}:CL:{p['password']}\n"
         users_added.add(u)
 config += "\nallow *\n"
-for p in proxies: config += f"proxy -6 -n -a -p{p['port']} -i{IPV4_LOCAL} -e{p['ipv6']}\n"
+for p in proxies:
+    if p.get('active', True):
+        config += f"proxy -6 -n -a -p{p['port']} -i{IPV4_LOCAL} -e{p['ipv6']}\n"
 config += "flush\n"
 with open('/etc/3proxy/3proxy.cfg', 'w') as f: f.write(config)
 auth = ""
-for p in proxies: auth += f"{p['username']}:CL:{p['password']}\n"
+for p in proxies:
+    if p.get('active', True):
+        auth += f"{p['username']}:CL:{p['password']}\n"
 with open('/etc/3proxy/.proxyauth', 'w') as f: f.write(auth)
-print(f"Создано {len(proxies)} тестовых прокси")
+print(f"3proxy.cfg обновлён, активных прокси: {sum(1 for p in proxies if p.get('active', True))}")
 PYEOF
 
 chown -R root:root /opt/proxy-farm
 chmod +x /opt/proxy-farm/app.py
 systemctl daemon-reload
 systemctl enable 3proxy proxy-farm
-systemctl restart 3proxy proxy-farm
+systemctl restart 3proxy proxy-farm || true
 sleep 3
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          УСТАНОВКА ЗАВЕРШЕНА! v15.0                     ║"
-echo "║          http://$IPV4_LOCAL:2525                     ║"
-echo "║          Логин: admin / Пароль: $ADMIN_PASS             ║"
-echo "║          ✅ Тест сайтов работает                        ║"
-echo "║          ✅ Дашборд работает                            ║"
-echo "║          ✅ Система работает                            ║"
-echo "╚══════════════════════════════════════════════════════════╝"
-INSTALLEOF
+echo "Проверка сервисов..."
+FAIL=0
+for svc in 3proxy proxy-farm; do
+    if systemctl is-active --quiet "$svc"; then
+        echo "  [OK]   $svc"
+    else
+        echo "  [FAIL] $svc"
+        journalctl -u "$svc" -n 15 --no-pager || true
+        FAIL=1
+    fi
+done
+if ss -ltn 2>/dev/null | grep -q ':2525 '; then
+    echo "  [OK]   веб-порт 2525"
+else
+    echo "  [FAIL] веб-порт 2525 не слушается"
+    FAIL=1
+fi
+if curl -s --max-time 5 "http://127.0.0.1:2525/login" -o /dev/null; then
+    echo "  [OK]   веб-интерфейс отвечает"
+else
+    echo "  [FAIL] веб-интерфейс не отвечает"
+    FAIL=1
+fi
 
-chmod +x /root/proxy-farm3/install.sh
 echo ""
-echo "========================================="
-echo "  ГОТОВО! v15.0 - Всё работает"
-echo "  - Тест сайтов ✅"
-echo "  - Дашборд ✅"
-echo "  - Системная информация ✅"
-echo "  - Смена пароля ✅"
-echo "  - Проверка прокси ✅"
-echo "========================================="
+echo "=============================================================="
+echo "  УСТАНОВКА ЗАВЕРШЕНА"
+echo "  Веб-интерфейс:  http://$IPV4_LOCAL:2525"
+if [ -n "$IPV4_EXTERNAL" ] && [ "$IPV4_EXTERNAL" != "$IPV4_LOCAL" ]; then
+echo "  Извне:          http://$IPV4_EXTERNAL:2525 (нужен проброс порта 2525)"
+fi
+echo "  Логин:          admin"
+echo "  Пароль:         $ADMIN_PASS"
+echo "  Прокси:         порты $PROXY_START-$PROXY_END, IPv6 $IPV6_SUBNET"
+echo ""
+echo "  IPv6 адреса восстанавливаются при каждой загрузке"
+echo "  (restore_ipv6.py через ExecStartPre у 3proxy)."
+echo "  Перезагрузка:   sudo reboot"
+echo "=============================================================="
+if [ "$FAIL" -ne 0 ]; then
+    echo ""
+    echo "⚠ Один или несколько сервисов не запустились."
+    echo "  Логи: journalctl -u 3proxy -n 50 --no-pager"
+    echo "        journalctl -u proxy-farm -n 50 --no-pager"
+    exit 1
+fi
