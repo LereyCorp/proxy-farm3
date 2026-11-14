@@ -9,7 +9,7 @@ fi
 export NEEDRESTART_MODE=a
 export DEBIAN_FRONTEND=noninteractive
 
-clear
+clear 2>/dev/null || true
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║          ProxyFarm Neo - IPv6 Proxy Server v15.0        ║"
 echo "║          Полный fix + Тест сайтов работает              ║"
@@ -37,6 +37,14 @@ fi
 
 IPV4_EXTERNAL=$(curl -4 -s --connect-timeout 3 ifconfig.me 2>/dev/null || curl -4 -s --connect-timeout 3 ipinfo.io/ip 2>/dev/null || echo "")
 
+# === АВТООТВЕТЫ (solver-farm deploy) ===
+ANSWERS_FILE="${FARM_ANSWERS:-/tmp/farm_install.answers}"
+if [ -f "$ANSWERS_FILE" ]; then
+    . "$ANSWERS_FILE"
+    FARM_AUTO="${FARM_AUTO:-1}"
+fi
+SEED_PROXIES="${SEED_PROXIES:-5}"
+
 echo ""
 echo "=== АВТООПРЕДЕЛЕНИЕ ==="
 echo "Локальный IPv4:  $IPV4_LOCAL"
@@ -46,6 +54,15 @@ echo "Интерфейс:       $INTERFACE"
 echo "Внешний IPv4:    ${IPV4_EXTERNAL:-не определен}"
 echo ""
 
+if [ "${FARM_AUTO:-0}" = "1" ]; then
+echo ""
+echo "AUTO-режим: параметры взяты из $ANSWERS_FILE"
+PROXY_START="${PROXY_START:-30000}"
+PROXY_END="${PROXY_END:-31000}"
+if [ -z "${ADMIN_PASS:-}" ]; then
+    ADMIN_PASS=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 14)
+fi
+else
 echo "Нажмите ENTER для автоопределения или введите свои данные:"
 echo ""
 
@@ -100,6 +117,7 @@ PROXY_END=${input:-31000}
 while ! [[ "$PROXY_END" =~ ^[0-9]+$ ]] || [ "$PROXY_END" -lt "$PROXY_START" ] || [ "$PROXY_END" -gt 65535 ]; do
     read -p "❌ Конечный порт должен быть >= $PROXY_START. Введите: " PROXY_END
 done
+fi
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
@@ -114,8 +132,12 @@ echo "║ Пароль админа:   $ADMIN_PASS"
 echo "║ Порты прокси:    $PROXY_START-$PROXY_END"
 echo "╚══════════════════════════════════════════════════════════╝"
 
-read -p "Всё верно? [Y/n]: " CONFIRM
-CONFIRM=${CONFIRM:-Y}
+if [ "${FARM_AUTO:-0}" = "1" ]; then
+    CONFIRM=Y
+else
+    read -p "Всё верно? [Y/n]: " CONFIRM
+    CONFIRM=${CONFIRM:-Y}
+fi
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo "Установка отменена."
     exit 0
@@ -140,7 +162,9 @@ if [ -z "$THREEPROXY_BIN" ]; then
     echo "❌ Бинарник 3proxy не найден после сборки."
     exit 1
 fi
-ln -sf "$THREEPROXY_BIN" /usr/bin/3proxy
+if [ "$THREEPROXY_BIN" != "/usr/bin/3proxy" ]; then
+    ln -sf "$THREEPROXY_BIN" /usr/bin/3proxy
+fi
 
 echo "[3/6] Настройка Python..."
 mkdir -p /opt/proxy-farm/templates /etc/3proxy /var/log/3proxy
@@ -196,11 +220,32 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-EXTERNAL_IPV4 = "$IPV4_EXTERNAL"
-LOCAL_IPV4 = "$IPV4_LOCAL"
-IPV6_SUBNET = "$IPV6_SUBNET"
-IPV6_MAIN = "$IPV6_MAIN"
-INTERFACE = "$INTERFACE"
+CONFIG_FILE = '/opt/proxy-farm/config.json'
+
+def load_config():
+    try:
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def cfg_get(key, default=''):
+    return load_config().get(key, default)
+
+def local4():
+    return cfg_get('local_ipv4') or LOCAL_IPV4
+
+def ext4():
+    return cfg_get('external_ipv4') or EXTERNAL_IPV4
+
+def iface_name():
+    return cfg_get('interface') or INTERFACE
+
+EXTERNAL_IPV4 = cfg_get('external_ipv4', "$IPV4_EXTERNAL")
+LOCAL_IPV4 = cfg_get('local_ipv4', "$IPV4_LOCAL")
+IPV6_SUBNET = cfg_get('ipv6_subnet', "$IPV6_SUBNET")
+IPV6_MAIN = cfg_get('ipv6_main', "$IPV6_MAIN")
+INTERFACE = cfg_get('interface', "$INTERFACE")
 PROXY_START = $PROXY_START
 PROXY_END = $PROXY_END
 ADMIN_HASH = generate_password_hash("$ADMIN_PASS")
@@ -230,10 +275,10 @@ def detect_local_ipv4():
             return ip
     except Exception:
         pass
-    return LOCAL_IPV4
+    return cfg_get('local_ipv4') or LOCAL_IPV4
 
-INTERFACE = detect_interface() or INTERFACE
-LOCAL_IPV4 = detect_local_ipv4() or LOCAL_IPV4
+INTERFACE = detect_interface() or cfg_get('interface') or INTERFACE
+LOCAL_IPV4 = detect_local_ipv4() or cfg_get('local_ipv4') or LOCAL_IPV4
 
 PROXY_DB = '/opt/proxy-farm/proxies.json'
 USERS_DB = '/opt/proxy-farm/users.json'
@@ -263,7 +308,9 @@ def load_proxies():
     except: return []
 
 def save_proxies(proxies):
-    with open(PROXY_DB, 'w') as f: json.dump(proxies, f, indent=2)
+    tmp = PROXY_DB + '.tmp'
+    with open(tmp, 'w') as f: json.dump(proxies, f, indent=2)
+    os.replace(tmp, PROXY_DB)
 
 def get_admin_hash():
     try:
@@ -283,7 +330,10 @@ def generate_safe_username():
     return f"user{random.randint(10000, 99999)}"
 
 def generate_random_ipv6():
-    network = ipaddress.ip_network(IPV6_SUBNET)
+    subnet = cfg_get('ipv6_subnet') or IPV6_SUBNET
+    if not subnet:
+        raise RuntimeError('ipv6_subnet not set')
+    network = ipaddress.ip_network(subnet)
     used = {p.get('ipv6') for p in load_proxies()}
     for _ in range(100):
         ip = str(network.network_address + random.randint(1, (1 << 64) - 2))
@@ -292,14 +342,15 @@ def generate_random_ipv6():
     return str(network.network_address + random.randint(1, (1 << 64) - 2))
 
 def add_ipv6(ipv6):
+    iface = iface_name()
     try:
-        result = subprocess.run([IP_BIN, '-6', '-o', 'addr', 'show', 'dev', INTERFACE], capture_output=True, text=True)
+        result = subprocess.run([IP_BIN, '-6', '-o', 'addr', 'show', 'dev', iface], capture_output=True, text=True)
         for line in result.stdout.splitlines():
             parts = line.split()
             if 'inet6' in parts and parts[parts.index('inet6') + 1].split('/')[0] == ipv6:
                 return True
         for attempt in range(3):
-            r = subprocess.run([IP_BIN, '-6', 'addr', 'add', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True, text=True)
+            r = subprocess.run([IP_BIN, '-6', 'addr', 'add', f'{ipv6}/64', 'dev', iface], capture_output=True, text=True)
             if r.returncode == 0: return True
             time.sleep(0.5)
         return False
@@ -307,7 +358,7 @@ def add_ipv6(ipv6):
 
 def remove_ipv6(ipv6):
     try:
-        subprocess.run([IP_BIN, '-6', 'addr', 'del', f'{ipv6}/64', 'dev', INTERFACE], capture_output=True)
+        subprocess.run([IP_BIN, '-6', 'addr', 'del', f'{ipv6}/64', 'dev', iface_name()], capture_output=True)
     except: pass
 
 def update_3proxy_config():
@@ -324,7 +375,7 @@ def update_3proxy_config():
         config += "\nallow *\n"
         for p in proxies:
             if p.get('active', True):
-                config += f"proxy -6 -n -a -p{p['port']} -i{LOCAL_IPV4} -e{p['ipv6']}\n"
+                config += f"proxy -6 -n -a -p{p['port']} -i{local4()} -e{p['ipv6']}\n"
         config += "flush\n"
         with open('/etc/3proxy/3proxy.cfg', 'w') as f: f.write(config)
         auth = ""
@@ -347,7 +398,7 @@ def check_port(port):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
-        result = sock.connect_ex((LOCAL_IPV4, port))
+        result = sock.connect_ex((local4(), port))
         sock.close()
         return result == 0
     except: return False
@@ -355,7 +406,7 @@ def check_port(port):
 def check_proxy_internet(proxy):
     for attempt in range(3):
         try:
-            result = subprocess.run(['/usr/bin/curl', '-x', f"http://{proxy['username']}:{proxy['password']}@{LOCAL_IPV4}:{proxy['port']}", '-s', 'http://ip6only.me/api/', '--connect-timeout', '10', '--max-time', '15'], capture_output=True, text=True, timeout=20)
+            result = subprocess.run(['/usr/bin/curl', '-x', f"http://{proxy['username']}:{proxy['password']}@{local4()}:{proxy['port']}", '-s', 'http://ip6only.me/api/', '--connect-timeout', '10', '--max-time', '15'], capture_output=True, text=True, timeout=20)
             match = re.search(r'IPv6,([0-9a-f:]+)', result.stdout)
             if match: return {'status': 'working', 'ip': match.group(1), 'type': 'IPv6'}
             if '407' in result.stdout: return {'status': 'error', 'error': 'Auth failed'}
@@ -366,14 +417,14 @@ def check_proxy_internet(proxy):
 
 def check_website_via_proxy(proxy, url):
     try:
-        result = subprocess.run(['/usr/bin/curl', '-x', f"http://{proxy['username']}:{proxy['password']}@{LOCAL_IPV4}:{proxy['port']}", '-s', '-o', '/dev/null', '-w', '%{http_code}', url, '--connect-timeout', '10', '--max-time', '15'], capture_output=True, text=True, timeout=20)
+        result = subprocess.run(['/usr/bin/curl', '-x', f"http://{proxy['username']}:{proxy['password']}@{local4()}:{proxy['port']}", '-s', '-o', '/dev/null', '-w', '%{http_code}', url, '--connect-timeout', '10', '--max-time', '15'], capture_output=True, text=True, timeout=20)
         http_code = result.stdout.strip()
         return {'url': url, 'http_code': http_code, 'accessible': http_code in ['200', '301', '302', '403']}
     except Exception as e:
         return {'url': url, 'http_code': '0', 'accessible': False, 'error': str(e)}
 
 def get_system_info():
-    info = {'cpu': {'percent': 0, 'count': 0}, 'memory': {'percent': 0, 'used': '0', 'total': '0'}, 'swap': {'percent': 0, 'used': '0', 'total': '0'}, 'disks': [], 'network': {'sent': '0', 'recv': '0'}, 'system': {'hostname': socket.gethostname(), 'os': f"{platform.system()} {platform.release()}", 'kernel': platform.release(), 'uptime': 'N/A', 'load_avg': [0,0,0]}, 'network_config': {'external_ipv4': EXTERNAL_IPV4, 'local_ipv4': LOCAL_IPV4, 'ipv6_main': IPV6_MAIN, 'ipv6_subnet': IPV6_SUBNET}, 'proxy_stats': {'active': 0, 'total': 0, 'ports_available': 0}, 'processes': []}
+    info = {'cpu': {'percent': 0, 'count': 0}, 'memory': {'percent': 0, 'used': '0', 'total': '0'}, 'swap': {'percent': 0, 'used': '0', 'total': '0'}, 'disks': [], 'network': {'sent': '0', 'recv': '0'}, 'system': {'hostname': socket.gethostname(), 'os': f"{platform.system()} {platform.release()}", 'kernel': platform.release(), 'uptime': 'N/A', 'load_avg': [0,0,0]}, 'network_config': {'external_ipv4': ext4(), 'local_ipv4': local4(), 'ipv6_main': cfg_get('ipv6_main') or IPV6_MAIN, 'ipv6_subnet': cfg_get('ipv6_subnet') or IPV6_SUBNET}, 'proxy_stats': {'active': 0, 'total': 0, 'ports_available': 0}, 'processes': []}
     if PSUTIL:
         try:
             info['cpu'] = {'percent': round(psutil.cpu_percent(interval=0.3), 1), 'count': psutil.cpu_count()}
@@ -425,7 +476,7 @@ def system_info():
 def api_proxies():
     proxies = load_proxies()
     for p in proxies:
-        p['connection_format'] = f"http://{EXTERNAL_IPV4}:{p['port']}:{p['username']}:{p['password']}"
+        p['connection_format'] = f"http://{ext4()}:{p['port']}:{p['username']}:{p['password']}"
         p['port_open'] = check_port(p['port'])
     return jsonify({'proxies': proxies})
 
@@ -446,7 +497,7 @@ def api_create():
             port = available_ports[i]
             login = data.get('username') or generate_safe_username()
             passwd = data.get('password') or generate_safe_password()
-            proxy = {'id': f"p{port}", 'ipv6': ipv6, 'port': port, 'username': login, 'password': passwd, 'created_at': datetime.now().isoformat(), 'active': True, 'connection_format': f"http://{EXTERNAL_IPV4}:{port}:{login}:{passwd}"}
+            proxy = {'id': f"p{port}", 'ipv6': ipv6, 'port': port, 'username': login, 'password': passwd, 'created_at': datetime.now().isoformat(), 'active': True, 'connection_format': f"http://{ext4()}:{port}:{login}:{passwd}"}
             proxies.append(proxy); created.append(proxy)
         save_proxies(proxies); update_3proxy_config(); restart_3proxy()
         return jsonify({'message': f'Создано {len(created)} прокси', 'proxies': created})
@@ -562,109 +613,459 @@ if __name__ == '__main__':
     if not any(u.get('username')=='admin' for u in users):
         users.append({'id':'1','username':'admin','password':ADMIN_HASH})
         with open(USERS_DB,'w') as f: json.dump(users, f)
-    update_3proxy_config(); restart_3proxy()
+    update_3proxy_config()
     app.run(host='0.0.0.0', port=2525, debug=False, threaded=True)
 PYEOF
 
-cat > /opt/proxy-farm/restore_ipv6.py << 'PYEOF'
+cat > /opt/proxy-farm/sync_ips.py << 'PYEOF'
 #!/usr/bin/env python3
-"""Восстанавливает IPv6-адреса прокси и пересобирает 3proxy.cfg после ребута."""
+"""Keep the proxy farm in sync with the currently assigned IPv4/IPv6.
+
+Runs on boot (3proxy ExecStartPre), on a timer and from a NetworkManager
+dispatcher. Migrates proxy IPv6 addresses to the current /64 prefix while
+keeping the interface identifier, rewrites proxies.json, config.json and
+3proxy.cfg, and restarts 3proxy only when something actually changed.
+"""
+import argparse
+import fcntl
+import ipaddress
 import json
 import os
+import random
+import re
 import subprocess
 import sys
+import time
 
 BASE = '/opt/proxy-farm'
 CONFIG = os.path.join(BASE, 'config.json')
 PROXIES = os.path.join(BASE, 'proxies.json')
-IP_BIN = '/usr/sbin/ip' if os.path.exists('/usr/sbin/ip') else '/sbin/ip'
+CFG3 = '/etc/3proxy/3proxy.cfg'
+AUTH3 = '/etc/3proxy/.proxyauth'
+IP = '/usr/sbin/ip' if os.path.exists('/usr/sbin/ip') else '/sbin/ip'
+LOCK = '/run/proxy-farm-sync.lock'
+DRY = False
 
 
-def run(args):
-    return subprocess.run(args, capture_output=True, text=True)
+def run(args, timeout=10):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except Exception as exc:
+        return subprocess.CompletedProcess(args, 1, '', str(exc))
 
 
 def read_json(path, default):
     try:
-        with open(path) as f:
-            return json.load(f)
+        with open(path) as fh:
+            return json.load(fh)
     except Exception:
         return default
 
 
-def find_interface(cfg):
+def write_json(path, data):
+    if DRY:
+        return
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as fh:
+        json.dump(data, fh, indent=2)
+    os.replace(tmp, path)
+
+
+def write_text(path, text):
+    if DRY:
+        return
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as fh:
+        fh.write(text)
+    os.replace(tmp, path)
+
+
+def default_iface():
     for family in ('-4', '-6'):
-        r = run([IP_BIN, family, 'route', 'show', 'default'])
-        for line in r.stdout.splitlines():
-            parts = line.split()
-            if 'dev' in parts:
-                iface = parts[parts.index('dev') + 1]
-                if os.path.exists('/sys/class/net/' + iface):
-                    return iface
-    iface = cfg.get('interface')
-    if iface and os.path.exists('/sys/class/net/' + iface):
-        return iface
-    try:
-        for name in os.listdir('/sys/class/net'):
-            if name != 'lo' and os.path.isdir('/sys/class/net/' + name):
-                return name
-    except Exception:
-        pass
+        parts = run([IP, family, 'route', 'show', 'default']).stdout.split()
+        if 'dev' in parts:
+            iface = parts[parts.index('dev') + 1]
+            if os.path.exists('/sys/class/net/' + iface):
+                return iface
     return None
 
 
+def local_ipv4(iface):
+    out = run([IP, '-4', '-o', 'addr', 'show', 'dev', iface, 'scope', 'global']).stdout
+    for line in out.splitlines():
+        match = re.search(r'inet (\d+\.\d+\.\d+\.\d+)', line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def external_ipv4(last):
+    for url in ('https://api.ipify.org', 'https://ifconfig.me'):
+        out = run(['/usr/bin/curl', '-4', '-s', '--connect-timeout', '3',
+                   '--max-time', '5', url], timeout=8).stdout.strip()
+        if re.fullmatch(r'\d+\.\d+\.\d+\.\d+', out):
+            return out
+    return last
+
+
+def address_entries(iface):
+    out = run([IP, '-6', '-o', 'addr', 'show', 'dev', iface, 'scope', 'global']).stdout
+    entries = []
+    for line in out.splitlines():
+        match = re.search(r'inet6 ([0-9a-fA-F:]+)/(\d+)(.*)$', line)
+        if not match:
+            continue
+        try:
+            ip = ipaddress.ip_address(match.group(1))
+        except ValueError:
+            continue
+        entries.append((ip, match.group(2), match.group(3)))
+    return entries
+
+
+def fixed_prefix(cfg, iface):
+    if not cfg.get('ipv6_subnet_fixed'):
+        return None
+    try:
+        net = ipaddress.ip_network(cfg.get('ipv6_subnet', ''), strict=False)
+    except ValueError:
+        return None
+    if any(ip in net for ip, _plen, _flags in address_entries(iface)):
+        return net
+    for line in run([IP, '-6', 'route', 'show', 'dev', iface]).stdout.splitlines():
+        token = line.split()[0] if line.split() else ''
+        if '/' not in token:
+            continue
+        try:
+            route_net = ipaddress.ip_network(token, strict=False)
+        except ValueError:
+            continue
+        if net.version == route_net.version and net.subnet_of(route_net):
+            return net
+    return None
+
+
+def choose_prefix(cfg, iface):
+    pinned = fixed_prefix(cfg, iface)
+    if pinned is not None:
+        return pinned
+
+    entries = address_entries(iface)
+
+    for ip, plen, flags in entries:
+        if plen == '64' and 'mngtmpaddr' in flags and 'deprecated' not in flags \
+                and 'tentative' not in flags:
+            return ipaddress.ip_network(f'{ip}/64', strict=False)
+
+    old = cfg.get('ipv6_subnet')
+    if old:
+        try:
+            old_net = ipaddress.ip_network(old, strict=False)
+        except ValueError:
+            old_net = None
+        if old_net is not None and any(ip in old_net for ip, _plen, _flags in entries):
+            return old_net
+
+    for ip, plen, flags in entries:
+        if plen == '64' and 'dynamic' in flags and 'temporary' not in flags:
+            return ipaddress.ip_network(f'{ip}/64', strict=False)
+
+    for ip, plen, _flags in entries:
+        if plen == '64':
+            return ipaddress.ip_network(f'{ip}/64', strict=False)
+
+    for line in run([IP, '-6', 'route', 'show', 'dev', iface]).stdout.splitlines():
+        token = line.split()[0] if line.split() else ''
+        if token.endswith('/64') and not token.startswith('fe80'):
+            try:
+                net = ipaddress.ip_network(token, strict=False)
+            except ValueError:
+                continue
+            if net.is_global:
+                return net
+    return None
+
+
+def main_ipv6(iface, prefix):
+    entries = address_entries(iface)
+    for ip, _plen, flags in entries:
+        if prefix is not None and ip not in prefix:
+            continue
+        if 'mngtmpaddr' in flags and 'temporary' not in flags and 'tentative' not in flags:
+            return str(ip)
+    for ip, _plen, flags in entries:
+        if prefix is not None and ip not in prefix:
+            continue
+        if 'temporary' not in flags and 'tentative' not in flags:
+            return str(ip)
+    for ip, _plen, _flags in entries:
+        if prefix is None or ip in prefix:
+            return str(ip)
+    return None
+
+
+def has_addr(iface, ip):
+    out = run([IP, '-6', '-o', 'addr', 'show', 'dev', iface]).stdout
+    return re.search(r'inet6 ' + re.escape(ip) + r'/', out) is not None
+
+
+def wait_ready(iface, ip, timeout=8.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        out = run([IP, '-6', '-o', 'addr', 'show', 'dev', iface]).stdout
+        found = False
+        tentative = False
+        for line in out.splitlines():
+            if 'inet6 ' + ip + '/' in line:
+                found = True
+                tentative = 'tentative' in line
+                break
+        if found and not tentative:
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def add_addr(iface, ip):
+    if DRY:
+        return True
+    existed = has_addr(iface, ip)
+    if existed:
+        return wait_ready(iface, ip)
+    err = ''
+    for _ in range(3):
+        result = run([IP, '-6', 'addr', 'add', f'{ip}/64', 'dev', iface])
+        err = (result.stderr or '') + (result.stdout or '')
+        if result.returncode == 0 or 'File exists' in err or 'already assigned' in err:
+            if wait_ready(iface, ip):
+                return True
+            del_addr(iface, ip)
+            return False
+        time.sleep(0.5)
+    print(f'sync: add {ip} failed: {err.strip()}', flush=True)
+    return False
+
+
+def del_addr(iface, ip):
+    if DRY:
+        return
+    run([IP, '-6', 'addr', 'del', f'{ip}/64', 'dev', iface])
+
+
+def random_ip(prefix, used):
+    net = ipaddress.ip_network(prefix, strict=False)
+    for _ in range(200):
+        ip = net.network_address + random.randint(1, (1 << 64) - 2)
+        if str(ip) not in used:
+            return str(ip)
+    return str(net.network_address + random.randint(1, (1 << 64) - 2))
+
+
+def migrate_ip(old_ip, prefix, used):
+    net = ipaddress.ip_network(prefix, strict=False)
+    iid = int(ipaddress.ip_address(old_ip)) & ((1 << 64) - 1)
+    new_ip = net.network_address + iid
+    if new_ip == net.network_address or str(new_ip) in used:
+        return random_ip(prefix, used)
+    return str(new_ip)
+
+
+def build_config(proxies, local4):
+    lines = [
+        'nserver 1.1.1.1',
+        'maxconn 200',
+        'nscache 65536',
+        'timeouts 1 5 30 60 180 1800 15 60',
+        'setgid 65535',
+        'setuid 65535',
+        '',
+        'auth strong',
+    ]
+    seen = set()
+    for proxy in proxies:
+        if not proxy.get('active', True):
+            continue
+        key = (proxy.get('username'), proxy.get('password'))
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"users {proxy['username']}:CL:{proxy['password']}")
+    lines.extend(['', 'allow *'])
+    for proxy in proxies:
+        if proxy.get('active', True):
+            lines.append(f"proxy -6 -n -a -p{proxy['port']} -i{local4} -e{proxy['ipv6']}")
+    lines.append('flush')
+    return '\n'.join(lines) + '\n'
+
+
 def main():
-    cfg = read_json(CONFIG, {})
-    proxies = read_json(PROXIES, [])
-    iface = find_interface(cfg)
-    if not iface:
-        print('restore-ipv6: сетевой интерфейс не найден')
+    global DRY
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--wait', type=int, default=0)
+    parser.add_argument('--no-restart', action='store_true')
+    parser.add_argument('--dry-run', action='store_true')
+    args = parser.parse_args()
+    DRY = args.dry_run
+
+    lock_file = open(LOCK, 'a')
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print('sync: another instance is running', flush=True)
         return 0
 
-    active = [p for p in proxies if p.get('active', True) and p.get('ipv6')]
-    current = set()
-    for line in run([IP_BIN, '-6', '-o', 'addr', 'show', 'dev', iface]).stdout.splitlines():
-        parts = line.split()
-        if 'inet6' in parts:
-            current.add(parts[parts.index('inet6') + 1].split('/')[0])
-    restored = 0
-    for p in active:
-        ip = p['ipv6']
-        if ip in current:
-            restored += 1
-            continue
-        r = run([IP_BIN, '-6', 'addr', 'add', f'{ip}/64', 'dev', iface])
-        err = (r.stderr or '') + (r.stdout or '')
-        if r.returncode == 0 or 'File exists' in err:
-            restored += 1
-        else:
-            print(f'restore-ipv6: не удалось добавить {ip}: {err.strip()}')
+    cfg = read_json(CONFIG, {})
+    iface = default_iface() or cfg.get('interface')
+    if not iface or not os.path.exists('/sys/class/net/' + iface):
+        print('sync: network interface not found', flush=True)
+        return 0
 
-    print(f'restore-ipv6: {restored}/{len(active)} адресов на {iface}')
+    deadline = time.time() + max(0, args.wait)
+    prefix = None
+    while True:
+        prefix = choose_prefix(cfg, iface)
+        if prefix is not None or time.time() >= deadline:
+            break
+        time.sleep(2)
 
-    if cfg.get('interface') != iface:
-        cfg['interface'] = iface
+    local4 = local_ipv4(iface) or cfg.get('local_ipv4') or '0.0.0.0'
+    ext4 = external_ipv4(cfg.get('external_ipv4'))
+    main6 = main_ipv6(iface, prefix) or cfg.get('ipv6_main')
+
+    proxies = read_json(PROXIES, [])
+    if not isinstance(proxies, list):
+        proxies = []
+
+    entries = address_entries(iface)
+    used = {str(ip) for ip, _plen, flags in entries
+            if 'dynamic' in flags or 'mngtmpaddr' in flags}
+    if main6:
+        used.add(str(main6))
+    for proxy in proxies:
         try:
-            with open(CONFIG, 'w') as f:
-                json.dump(cfg, f, indent=2)
-        except Exception as e:
-            print(f'restore-ipv6: не удалось обновить config.json: {e}')
+            current = ipaddress.ip_address(proxy.get('ipv6') or '')
+        except ValueError:
+            continue
+        if prefix is not None and current in prefix:
+            used.add(str(current))
+    changed = False
+    old_addresses = []
+    old_prefix = cfg.get('ipv6_subnet')
 
+    for proxy in proxies:
+        ip = proxy.get('ipv6')
+        if not ip:
+            continue
+        try:
+            old = ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+        if prefix is not None and old not in prefix:
+            new_ip = migrate_ip(ip, str(prefix), used)
+            if add_addr(iface, new_ip):
+                print(f"sync: proxy {proxy.get('port')} {ip} -> {new_ip}", flush=True)
+                old_addresses.append(ip)
+                proxy['ipv6'] = new_ip
+                ip = new_ip
+                changed = True
+            else:
+                print(f"sync: proxy {proxy.get('port')} migration failed, keeping {ip}",
+                      flush=True)
+        elif not has_addr(iface, ip):
+            if add_addr(iface, ip):
+                print(f"sync: proxy {proxy.get('port')} address restored {ip}", flush=True)
+        used.add(ip)
+
+    if ext4:
+        for proxy in proxies:
+            fmt = f"http://{ext4}:{proxy['port']}:{proxy['username']}:{proxy['password']}"
+            if proxy.get('connection_format') != fmt:
+                proxy['connection_format'] = fmt
+                changed = True
+
+    new_cfg = dict(cfg)
+    new_cfg.update({
+        'interface': iface,
+        'local_ipv4': local4,
+        'external_ipv4': ext4 or cfg.get('external_ipv4', ''),
+        'ipv6_subnet': str(prefix) if prefix is not None else cfg.get('ipv6_subnet', ''),
+        'ipv6_main': main6 or cfg.get('ipv6_main', ''),
+    })
+    if new_cfg != cfg:
+        write_json(CONFIG, new_cfg)
+
+    if changed:
+        write_json(PROXIES, proxies)
+
+    desired = build_config(proxies, local4)
     try:
-        sys.path.insert(0, BASE)
-        import app as farm
-        if farm.update_3proxy_config():
-            print('restore-ipv6: 3proxy.cfg обновлён')
-        else:
-            print('restore-ipv6: 3proxy.cfg НЕ обновлён')
-    except Exception as e:
-        print(f'restore-ipv6: конфиг 3proxy не обновлён: {e}')
+        with open(CFG3) as fh:
+            current = fh.read()
+    except Exception:
+        current = ''
 
+    restart_ok = True
+    if desired != current:
+        write_text(CFG3, desired)
+        auth = ''.join(
+            f"{p['username']}:CL:{p['password']}\n"
+            for p in proxies if p.get('active', True)
+        )
+        write_text(AUTH3, auth)
+        if DRY or args.no_restart:
+            print('sync: 3proxy.cfg updated (restart deferred)', flush=True)
+        else:
+            result = run(['/bin/systemctl', 'restart', '3proxy'], timeout=40)
+            restart_ok = result.returncode == 0
+            print(f"sync: 3proxy restart {'ok' if restart_ok else 'FAILED'}", flush=True)
+
+    if restart_ok:
+        for ip in old_addresses:
+            if has_addr(iface, ip):
+                del_addr(iface, ip)
+                print(f'sync: removed old address {ip}', flush=True)
+
+        if not DRY:
+            keep = {p.get('ipv6') for p in proxies if p.get('ipv6')}
+            if main6:
+                keep.add(main6)
+            if cfg.get('ipv6_main'):
+                keep.add(cfg['ipv6_main'])
+            managed = []
+            for value in (old_prefix, str(prefix) if prefix is not None else None):
+                if not value:
+                    continue
+                try:
+                    managed.append(ipaddress.ip_network(value, strict=False))
+                except ValueError:
+                    pass
+            for ip, _plen, flags in address_entries(iface):
+                text = str(ip)
+                if text in keep:
+                    continue
+                if 'dynamic' in flags or 'mngtmpaddr' in flags:
+                    continue
+                if not any(ip in net for net in managed):
+                    continue
+                del_addr(iface, text)
+                print(f'sync: removed stale address {text}', flush=True)
+
+    print(
+        f"sync: iface={iface} local4={local4} ext4={ext4} "
+        f"prefix={prefix} proxies={len(proxies)} changed={changed}",
+        flush=True,
+    )
     return 0
 
 
 if __name__ == '__main__':
     sys.exit(main())
+PYEOF
+
+cat > /opt/proxy-farm/restore_ipv6.py << 'PYEOF'
+#!/usr/bin/env python3
+import runpy
+runpy.run_path('/opt/proxy-farm/sync_ips.py', run_name='__main__')
 PYEOF
 
 echo "[5/6] Создание веб-интерфейса..."
@@ -981,7 +1382,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStartPre=/opt/proxy-farm/venv/bin/python /opt/proxy-farm/restore_ipv6.py
+ExecStartPre=/opt/proxy-farm/venv/bin/python /opt/proxy-farm/sync_ips.py --wait 60 --no-restart
 ExecStart=/usr/bin/3proxy /etc/3proxy/3proxy.cfg
 Restart=always
 RestartSec=5
@@ -1010,6 +1411,45 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
+
+cat > /etc/systemd/system/proxy-farm-sync.service << 'EOF'
+[Unit]
+Description=ProxyFarm IPv4/IPv6 synchronizer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/proxy-farm/venv/bin/python /opt/proxy-farm/sync_ips.py --wait 30
+Nice=5
+EOF
+
+cat > /etc/systemd/system/proxy-farm-sync.timer << 'EOF'
+[Unit]
+Description=Periodic ProxyFarm IPv4/IPv6 sync
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=30s
+AccuracySec=2s
+Unit=proxy-farm-sync.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+mkdir -p /etc/networkd-dispatcher/routable.d /etc/networkd-dispatcher/configured.d
+for hookdir in routable.d configured.d; do
+cat > "/etc/networkd-dispatcher/$hookdir/90-proxy-farm-sync" << 'EOF'
+#!/bin/bash
+/bin/systemctl start --no-block proxy-farm-sync.service
+EOF
+chmod 755 "/etc/networkd-dispatcher/$hookdir/90-proxy-farm-sync"
+done
+if command -v networkd-dispatcher >/dev/null 2>&1; then
+    systemctl enable networkd-dispatcher >/dev/null 2>&1 || true
+    systemctl start networkd-dispatcher >/dev/null 2>&1 || true
+fi
 
 cd /opt/proxy-farm && source venv/bin/activate
 python3 << PYEOF
@@ -1053,7 +1493,7 @@ if proxies:
 else:
     network = ipaddress.ip_network(IPV6_SUBNET)
     used = set()
-    count = min(5, PROXY_END - PROXY_START + 1)
+    count = min(${SEED_PROXIES:-5}, PROXY_END - PROXY_START + 1)
     for i in range(count):
         while True:
             ipv6 = str(network.network_address + random.randint(1, (1 << 64) - 2))
@@ -1071,7 +1511,7 @@ for p in proxies:
     if p.get('active', True) and p.get('ipv6'):
         r = subprocess.run([IP_BIN, '-6', 'addr', 'add', f"{p['ipv6']}/64", 'dev', INTERFACE], capture_output=True, text=True)
         err = (r.stderr or '') + (r.stdout or '')
-        if r.returncode != 0 and 'File exists' not in err:
+        if r.returncode != 0 and 'File exists' not in err and 'address already assigned' not in err:
             print(f"⚠ IPv6 {p['ipv6']} не добавлен: {err.strip()}")
 
 config = "nserver 1.1.1.1\nmaxconn 200\nnscache 65536\ntimeouts 1 5 30 60 180 1800 15 60\nsetgid 65535\nsetuid 65535\n\nauth strong\n"
@@ -1100,9 +1540,15 @@ PYEOF
 chown -R root:root /opt/proxy-farm
 chmod +x /opt/proxy-farm/app.py
 systemctl daemon-reload
-systemctl enable 3proxy proxy-farm
+systemctl enable 3proxy proxy-farm proxy-farm-sync.timer
 systemctl restart 3proxy proxy-farm || true
-sleep 3
+
+for i in $(seq 1 20); do
+    if systemctl is-active --quiet 3proxy && systemctl is-active --quiet proxy-farm && ss -ltn 2>/dev/null | grep -q ':2525 '; then
+        break
+    fi
+    sleep 1
+done
 
 echo ""
 echo "Проверка сервисов..."
@@ -1140,8 +1586,9 @@ echo "  Логин:          admin"
 echo "  Пароль:         $ADMIN_PASS"
 echo "  Прокси:         порты $PROXY_START-$PROXY_END, IPv6 $IPV6_SUBNET"
 echo ""
-echo "  IPv6 адреса восстанавливаются при каждой загрузке"
-echo "  (restore_ipv6.py через ExecStartPre у 3proxy)."
+echo "  IPv4/IPv6 подхватываются автоматически при смене адресов,"
+echo "  после ребута и при поднятии сети (sync_ips.py: ExecStartPre,"
+echo "  таймер 30с, хуки networkd-dispatcher)."
 echo "  Перезагрузка:   sudo reboot"
 echo "=============================================================="
 if [ "$FAIL" -ne 0 ]; then
